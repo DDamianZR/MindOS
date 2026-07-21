@@ -24,10 +24,12 @@ from mindos_schemas.api.v1.memory_dto import (
     VersionProvenanceDto,
 )
 from mindos_schemas.capabilities import Capability, RegisterCapabilitiesRequest
+from mindos_schemas.domain import RelationType
 from mindos_schemas.events.v1.memory_events import (
     KnowledgeArchivedEventData,
     KnowledgeCreatedEventData,
     KnowledgeUpdatedEventData,
+    RelationCreatedEventData,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -177,8 +179,31 @@ async def ingest_knowledge(
     correlation_id = x_correlation_id or new_id()
     set_correlation_id(correlation_id)
 
-    # Generar UUIDv7 (ordenable temporalmente) si es un nuevo nodo
-    node_id = request.node_id or new_id()
+    # Generar el embedding una única vez: se reutiliza para el dedup semántico y el upsert final.
+    vector = await embedding_provider.embed_query(request.content)
+
+    # Dedup semántico (F1-T5): solo para capturas nuevas (sin node_id explícito) y si el caller
+    # no fuerza on_duplicate="force_new". Busca el vecino más cercano y, si supera el umbral de
+    # similitud Y ese nodo sigue activo (no archivado), lo trata como casi-duplicado.
+    duplicate_of: UUID | None = None
+    duplicate_score: float | None = None
+    if request.node_id is None and request.on_duplicate != "force_new":
+        candidates = await vector_repo.search(vector, limit=1)
+        if candidates and candidates[0].score >= settings.DEDUP_SIMILARITY_THRESHOLD:
+            candidate_id = UUID(candidates[0].id)
+            candidate_ver = await db_repo.get_latest_node_version(candidate_id, include_archived=False)
+            if candidate_ver:
+                duplicate_of = candidate_id
+                duplicate_score = candidates[0].score
+
+    # Generar UUIDv7 (ordenable temporalmente) si es un nodo nuevo; reutilizar el node_id
+    # provisto explícitamente, o el del duplicado detectado si on_duplicate="new_version".
+    if request.node_id is not None:
+        node_id = request.node_id
+    elif duplicate_of is not None and request.on_duplicate == "new_version":
+        node_id = duplicate_of
+    else:
+        node_id = new_id()
 
     # 1. Guardar en Base de Datos Relacional
     await db_repo.save_node(node_id, request.object_type.value)
@@ -225,8 +250,7 @@ async def ingest_knowledge(
         provenance_source_id=provenance_source_id,
     )
 
-    # 2. Generar Embedding Vectorial y guardar en pgvector
-    vector = await embedding_provider.embed_query(request.content)
+    # 2. Guardar el embedding (ya calculado arriba, reutilizado del chequeo de dedup)
     await vector_repo.upsert(
         vector_id=str(node_id),
         embedding=vector,
@@ -250,12 +274,32 @@ async def ingest_knowledge(
     # 4. Registro durable en el event_log (dentro de la misma transacción que el conocimiento)
     await db_repo.save_event_log(new_id(), event_type, event_data.model_dump(mode="json"))
 
+    # 5. Dedup semántico en modo "link" (F1-T5, default): el nodo nuevo queda enlazado al
+    # casi-duplicado detectado, en vez de quedar aislado. "new_version" no crea relación porque
+    # ya reutilizó el mismo node_id (no hay un segundo nodo que enlazar).
+    dup_event_type = None
+    dup_event_data = None
+    if duplicate_of is not None and request.on_duplicate == "link":
+        dup_metadata = {"similarity": duplicate_score}
+        await db_repo.save_relation(
+            source_id=node_id, target_id=duplicate_of,
+            relation_type=RelationType.DUPLICATE_OF.value, metadata=dup_metadata,
+        )
+        dup_event_type = "com.mindos.memory.relation.created"
+        dup_event_data = RelationCreatedEventData(
+            source_id=node_id, target_id=duplicate_of,
+            relation_type=RelationType.DUPLICATE_OF.value, metadata=dup_metadata,
+        )
+        await db_repo.save_event_log(new_id(), dup_event_type, dup_event_data.model_dump(mode="json"))
+
     if settings.DATABASE_TYPE == "postgres":
-        # Guardar en base de datos física (conocimiento + event_log atómicos)
+        # Guardar en base de datos física (conocimiento + relación de dedup + event_log atómicos)
         await db_repo.session.commit()
 
-    # 5. Notificar al ecosistema por el bus (best-effort, tras la persistencia durable)
+    # 6. Notificar al ecosistema por el bus (best-effort, tras la persistencia durable)
     await publish_event(event_type, event_data, correlation_id)
+    if dup_event_type is not None:
+        await publish_event(dup_event_type, dup_event_data, correlation_id)
 
     # Releer la versión recién creada para devolver su timestamp real de persistencia
     saved_ver = await db_repo.get_latest_node_version(node_id)
@@ -271,6 +315,8 @@ async def ingest_knowledge(
         confidence=request.confidence,
         importance=request.importance,
         status=request.status,
+        duplicate_of=duplicate_of,
+        duplicate_score=duplicate_score,
     )
 
 
