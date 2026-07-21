@@ -6,11 +6,11 @@ from memory.src.application.ports.embedding import EmbeddingPort
 
 class MockEmbedding(EmbeddingPort):
     """
-    Mock de EmbeddingPort que retorna vectores de 384 dimensiones de forma semi-determinista.
+    Mock de EmbeddingPort que retorna vectores de 768 dimensiones de forma semi-determinista.
     Utiliza el hash MD5 del texto para rellenar los valores del vector, permitiendo
     que la similitud coseno funcione de forma predecible para pruebas de RAG.
     """
-    def __init__(self, dimension: int = 384):
+    def __init__(self, dimension: int = 768):
         self.dimension = dimension
 
     async def embed_query(self, text: str) -> list[float]:
