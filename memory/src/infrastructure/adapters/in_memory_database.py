@@ -90,6 +90,20 @@ class InMemoryDatabase(DatabasePort):
             return None
         return max(candidates, key=lambda v: v["created_at"])
 
+    async def list_node_versions_since(self, since: datetime | None, limit: int) -> list[dict[str, Any]]:
+        latest_versions = []
+        for versions in self._versions.values():
+            if not versions:
+                continue
+            latest = versions[-1]
+            if latest.get("tombstoned_at") is not None:
+                continue
+            if since is not None and latest["created_at"] < since:
+                continue
+            latest_versions.append(latest)
+        latest_versions.sort(key=lambda v: v["created_at"], reverse=True)
+        return latest_versions[:limit]
+
     async def save_relation(
         self,
         source_id: UUID,

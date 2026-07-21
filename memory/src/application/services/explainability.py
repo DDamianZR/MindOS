@@ -14,6 +14,74 @@ from memory.src.application.services.dto_mappers import episode_dict_to_dto
 # Relaciones que cuentan como "sustento" de una conclusión al recorrer el grafo hacia atrás (F2-T3).
 EXPLAIN_RELATION_TYPES = {"DECIDES", "EVIDENCES", "DERIVED_FROM", "ANSWERS"}
 
+# Subconjunto usado por "¿qué respalda esta recomendación?" (F2-T4, más estrecho que explain).
+SUPPORT_RELATION_TYPES = {"SUPPORTS", "EVIDENCES"}
+
+
+async def _source_dto_for(database: DatabasePort, version: dict) -> SourceDto | None:
+    source_id = version.get("provenance_source_id")
+    if not source_id:
+        return None
+    src = await database.get_source(source_id)
+    if not src:
+        return None
+    return SourceDto(
+        id=src["id"], kind=src["kind"], uri=src["uri"], raw_ref=src["raw_ref"],
+        captured_at=src["captured_at"], metadata=src["metadata"],
+    )
+
+
+async def build_evidence_tree(
+    database: DatabasePort, node_id: UUID, relation_types: set[str], max_depth: int = 3
+) -> tuple[dict | None, list[ExplainEvidenceDto]]:
+    """
+    Recorre el grafo hacia atrás desde `node_id`, siguiendo únicamente aristas cuyo tipo esté
+    en `relation_types`, y reconstruye un árbol anidado de evidencia con trazabilidad de
+    provenance en cada nivel. Reutilizado por `/explain` (F2-T3, con `EXPLAIN_RELATION_TYPES`)
+    y `/cognitive/support` (F2-T4, con `SUPPORT_RELATION_TYPES`) — misma caminata, distinto filtro.
+
+    Devuelve `(version_del_nodo_raiz, árbol)`; `version_del_nodo_raiz` es `None` si no existe.
+    """
+    node_ver = await database.get_latest_node_version(node_id, include_archived=True)
+    if not node_ver:
+        return None, []
+
+    edges = await database.query_incoming_relations(node_id, max_depth=max_depth)
+    relevant_edges = [e for e in edges if e["relation_type"] in relation_types]
+
+    # Agrupar aristas por su target_id para reconstruir el árbol de sustento por niveles.
+    children_by_target: dict[UUID, list[dict]] = {}
+    for edge in relevant_edges:
+        children_by_target.setdefault(edge["target_id"], []).append(edge)
+
+    version_cache: dict[UUID, dict | None] = {node_id: node_ver}
+
+    async def get_version(nid: UUID) -> dict | None:
+        if nid not in version_cache:
+            version_cache[nid] = await database.get_latest_node_version(nid, include_archived=True)
+        return version_cache[nid]
+
+    async def build_tree(current_id: UUID, visited: frozenset[UUID]) -> list[ExplainEvidenceDto]:
+        result = []
+        for edge in children_by_target.get(current_id, []):
+            source_id = edge["source_id"]
+            if source_id in visited:
+                continue  # evita ciclos (el grafo no debería tener, pero no confiar ciegamente)
+            source_ver = await get_version(source_id)
+            if not source_ver:
+                continue
+            nested = await build_tree(source_id, visited | {source_id})
+            result.append(ExplainEvidenceDto(
+                node_id=source_id, title=source_ver["title"], content=source_ver["content"],
+                object_type=source_ver.get("object_type"), relation_type=edge["relation_type"],
+                confidence=source_ver.get("confidence", 0.5), importance=source_ver.get("importance", 0.5),
+                source=await _source_dto_for(database, source_ver), supporting=nested,
+            ))
+        return result
+
+    tree = await build_tree(node_id, frozenset({node_id}))
+    return node_ver, tree
+
 
 class ExplainabilityService:
     """
@@ -30,56 +98,11 @@ class ExplainabilityService:
         self.thinking_graph = thinking_graph
 
     async def explain_node(self, node_id: UUID, max_depth: int = 3) -> ExplainNodeResponse | None:
-        node_ver = await self.database.get_latest_node_version(node_id, include_archived=True)
+        node_ver, supporting_evidence = await build_evidence_tree(
+            self.database, node_id, EXPLAIN_RELATION_TYPES, max_depth
+        )
         if not node_ver:
             return None
-
-        edges = await self.database.query_incoming_relations(node_id, max_depth=max_depth)
-        relevant_edges = [e for e in edges if e["relation_type"] in EXPLAIN_RELATION_TYPES]
-
-        # Agrupar aristas por su target_id para reconstruir el árbol de sustento por niveles.
-        children_by_target: dict[UUID, list[dict]] = {}
-        for edge in relevant_edges:
-            children_by_target.setdefault(edge["target_id"], []).append(edge)
-
-        version_cache: dict[UUID, dict | None] = {node_id: node_ver}
-
-        async def get_version(nid: UUID) -> dict | None:
-            if nid not in version_cache:
-                version_cache[nid] = await self.database.get_latest_node_version(nid, include_archived=True)
-            return version_cache[nid]
-
-        async def source_dto_for(version: dict) -> SourceDto | None:
-            source_id = version.get("provenance_source_id")
-            if not source_id:
-                return None
-            src = await self.database.get_source(source_id)
-            if not src:
-                return None
-            return SourceDto(
-                id=src["id"], kind=src["kind"], uri=src["uri"], raw_ref=src["raw_ref"],
-                captured_at=src["captured_at"], metadata=src["metadata"],
-            )
-
-        async def build_tree(current_id: UUID, visited: frozenset[UUID]) -> list[ExplainEvidenceDto]:
-            result = []
-            for edge in children_by_target.get(current_id, []):
-                source_id = edge["source_id"]
-                if source_id in visited:
-                    continue  # evita ciclos (el grafo no debería tener, pero no confiar ciegamente)
-                source_ver = await get_version(source_id)
-                if not source_ver:
-                    continue
-                nested = await build_tree(source_id, visited | {source_id})
-                result.append(ExplainEvidenceDto(
-                    node_id=source_id, title=source_ver["title"], content=source_ver["content"],
-                    object_type=source_ver.get("object_type"), relation_type=edge["relation_type"],
-                    confidence=source_ver.get("confidence", 0.5), importance=source_ver.get("importance", 0.5),
-                    source=await source_dto_for(source_ver), supporting=nested,
-                ))
-            return result
-
-        supporting_evidence = await build_tree(node_id, frozenset({node_id}))
 
         episodes_raw = await self.thinking_graph.get_episodes_by_node(node_id)
         episodes = [episode_dict_to_dto(ep) for ep in episodes_raw]

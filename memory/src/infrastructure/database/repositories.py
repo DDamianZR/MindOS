@@ -137,6 +137,37 @@ class PgDatabaseRepository(DatabasePort):
             return self._version_row_to_dict(ver, object_type)
         return None
 
+    async def list_node_versions_since(self, since: datetime | None, limit: int) -> list[dict[str, Any]]:
+        # DISTINCT ON (node_id) + ORDER BY version DESC: la última versión ACTIVA de cada nodo.
+        query = text("""
+            SELECT * FROM (
+                SELECT DISTINCT ON (v.node_id)
+                    v.id, v.node_id, v.version, v.title, v.content, v.metadata, v.created_at,
+                    v.author, v.parent_version_id, v.confidence, v.importance, v.status,
+                    v.evidence, v.salience, v.tombstoned_at, v.source_id, n.object_type
+                FROM knowledge_node_versions v
+                JOIN knowledge_nodes n ON v.node_id = n.id
+                WHERE v.tombstoned_at IS NULL
+                ORDER BY v.node_id, v.version DESC
+            ) latest
+            WHERE (:since IS NULL OR created_at >= :since)
+            ORDER BY created_at DESC
+            LIMIT :limit
+        """)
+        result = await self.session.execute(query, {"since": since, "limit": limit})
+        rows = result.mappings().all()
+        return [
+            {
+                "node_id": r["node_id"], "version_id": r["id"], "version": r["version"],
+                "title": r["title"], "content": r["content"], "author": r["author"],
+                "metadata": r["metadata"], "created_at": r["created_at"],
+                "parent_version_id": r["parent_version_id"], "object_type": r["object_type"],
+                "confidence": r["confidence"], "importance": r["importance"], "status": r["status"],
+                "evidence": r["evidence"], "salience": r["salience"], "tombstoned_at": r["tombstoned_at"],
+                "provenance_source_id": r["source_id"],
+            } for r in rows
+        ]
+
     async def save_relation(
         self,
         source_id: UUID,

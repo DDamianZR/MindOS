@@ -40,6 +40,8 @@ class DummyDatabase(DatabasePort):
         return [self.node_versions.get(node_id)] if node_id in self.node_versions else []
     async def get_node_version_asof(self, node_id, at):
         return self.node_versions.get(node_id)
+    async def list_node_versions_since(self, since, limit):
+        return list(self.node_versions.values())[:limit]
     async def set_latest_version_tombstone(self, node_id, tombstoned): return node_id in self.node_versions
     async def save_relation(self, source_id, target_id, relation_type, metadata): pass
     async def delete_relation(self, source_id, target_id, relation_type): pass
