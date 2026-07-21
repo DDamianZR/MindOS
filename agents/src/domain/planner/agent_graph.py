@@ -35,6 +35,9 @@ class AgentState(TypedDict):
     correlation_id: UUID
     context_node_ids: list[UUID]
     reasoning_step_counter: int
+    # F3-T7: canal de origen (provider/sender_id) si el goal vino de un mensaje entrante, para
+    # poder notificar por el mismo canal cuando una capacidad quede pendiente de aprobación.
+    reply_to: dict[str, str] | None
 
 
 class PlannerExecutorReviewerGraph:
@@ -153,7 +156,9 @@ class PlannerExecutorReviewerGraph:
         step.status = "running"
         try:
             # Despachar ejecución al Executor
-            result = await self.executor.execute_step(step, state["inputs"])
+            result = await self.executor.execute_step(
+                step, state["inputs"], episode_id=state["correlation_id"], reply_to=state.get("reply_to"),
+            )
             step.actual_output = result.output
             step.status = result.status
 

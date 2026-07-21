@@ -18,6 +18,7 @@ from agents.src.domain.planner.agent_graph import AgentState, PlannerExecutorRev
 from agents.src.domain.planner.llm_planner import LlmPlanner
 from agents.src.domain.planner.llm_reviewer import LlmReviewer
 from agents.src.infrastructure.adapters.http_reasoning_recorder import HttpReasoningRecorder
+from agents.src.infrastructure.adapters.in_memory_approval_store import InMemoryApprovalStore
 from agents.src.infrastructure.adapters.in_memory_capability_registry import (
     InMemoryCapabilityRegistry,
 )
@@ -35,6 +36,8 @@ app = FastAPI(
 
 # Registro de capacidades global en memoria del servicio
 capability_registry = InMemoryCapabilityRegistry()
+# Aprobaciones pendientes (F1-T8/F3-T1/F3-T7), resueltas vía Gateway.
+approval_store = InMemoryApprovalStore()
 
 def get_llm_port():
     """Inyecta el LLM configurado (Ollama local o Mock)."""
@@ -86,12 +89,21 @@ async def register_capabilities(request: RegisterCapabilitiesRequest):
 async def execute_agent_goal(
     goal: str,
     correlation_id: UUID | None = None,
+    reply_to_provider: str | None = None,
+    reply_to_sender_id: str | None = None,
     llm=Depends(get_llm_port),
     http_client: httpx.AsyncClient = Depends(get_http_client),
 ):
     # Generar o propagar el correlation_id (UUIDv7)
     corr_id = correlation_id or new_id()
     set_correlation_id(corr_id)
+
+    # F3-T7: si el goal vino de un mensaje entrante (pipeline F3-T5), el canal de origen viaja
+    # aquí para poder notificar por el mismo canal si una capacidad queda pendiente de aprobación.
+    reply_to = (
+        {"provider": reply_to_provider, "sender_id": reply_to_sender_id}
+        if reply_to_provider and reply_to_sender_id else None
+    )
 
     logger.info("Iniciando ejecución de meta para el usuario", goal=goal, correlation_id=str(corr_id))
 
@@ -125,7 +137,8 @@ async def execute_agent_goal(
     planner = LlmPlanner(llm)
     reviewer = LlmReviewer(llm)
     executor = CapabilityExecutor(
-        capability_registry, service_url_resolver=resolve_service_url, http_client=http_client
+        capability_registry, service_url_resolver=resolve_service_url, http_client=http_client,
+        approval_store=approval_store,
     )
     recorder = HttpReasoningRecorder(settings.MEMORY_URL, http_client=http_client)
 
@@ -163,6 +176,7 @@ async def execute_agent_goal(
         correlation_id=corr_id,
         context_node_ids=context_node_ids,
         reasoning_step_counter=0,
+        reply_to=reply_to,
     )
 
     try:
@@ -276,5 +290,12 @@ async def _record_outcome_as_knowledge(
             return
         except Exception as e:
             logger.warning("No se pudo registrar el resultado como conocimiento", error=str(e))
+
+
+# Import al final (evita ciclo): el router importa de este módulo (approval_store,
+# capability_registry, get_http_client, resolve_service_url), mismo patrón que memory/src/main.py.
+from agents.src.api.approvals_router import router as approvals_router  # noqa: E402
+
+app.include_router(approvals_router)
 
 # Fin del módulo main

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
+from uuid import UUID
 
 from mindos_schemas.api.v1.agent_dto import PlanStep
 
@@ -26,9 +27,17 @@ class Executor(ABC):
     resultado crudo junto con el estado resultante del paso.
     """
     @abstractmethod
-    async def execute_step(self, step: PlanStep, inputs: dict[str, Any]) -> ExecutionResult:
+    async def execute_step(
+        self,
+        step: PlanStep,
+        inputs: dict[str, Any],
+        episode_id: UUID,
+        reply_to: dict[str, str] | None = None,
+    ) -> ExecutionResult:
         """
-        Resuelve la capacidad requerida por el paso, ejecuta la petición
-        contra el servicio proveedor y retorna el resultado.
+        Resuelve la capacidad requerida por el paso, ejecuta la petición contra el servicio
+        proveedor y retorna el resultado. `episode_id` y `reply_to` (F3-T7: canal de origen,
+        si el goal vino de un mensaje) solo se usan para persistir la aprobación cuando la
+        capacidad la requiere (F1-T8) — no afectan el despacho normal.
         """
         pass

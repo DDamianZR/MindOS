@@ -18,6 +18,7 @@ def _base_state(**overrides) -> AgentState:
         "current_step_idx": 0, "available_capabilities": [], "inputs": {}, "feedback": None,
         "error": None, "final_output": None, "retries": 0, "max_retries": 3,
         "correlation_id": new_id(), "context_node_ids": [], "reasoning_step_counter": 0,
+        "reply_to": None,
     }
     defaults.update(overrides)
     return AgentState(**defaults)
@@ -58,7 +59,7 @@ class DummyReviewer(Reviewer):
 
 # Mock del Executor
 class DummyExecutor(Executor):
-    async def execute_step(self, step, inputs):
+    async def execute_step(self, step, inputs, episode_id, reply_to=None):
         return ExecutionResult(output="Resultado de ejecución del executor", status="completed")
 
 
@@ -178,7 +179,7 @@ class NeverCalledReviewer(Reviewer):
 
 
 class PendingApprovalExecutor(Executor):
-    async def execute_step(self, step, inputs):
+    async def execute_step(self, step, inputs, episode_id, reply_to=None):
         return ExecutionResult(output="Requiere aprobación humana", status="pending_approval")
 
 

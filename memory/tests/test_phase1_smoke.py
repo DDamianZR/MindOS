@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from mindos_common.ids import new_id
 from mindos_schemas.api.v1.agent_dto import PlanStep
 from mindos_schemas.capabilities import Capability
 
@@ -130,7 +131,7 @@ async def test_phase1_agent_executes_real_capability_against_memory_service(monk
         expected_output="El puerto encontrado", status="pending",
     )
 
-    result = await executor.execute_step(step, {"query": "puerto configurado para TLS"})
+    result = await executor.execute_step(step, {"query": "puerto configurado para TLS"}, episode_id=new_id())
 
     assert result.status == "completed"
     assert "443" in result.output, f"se esperaba el resultado real de la búsqueda; output={result.output!r}"
