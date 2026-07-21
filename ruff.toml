@@ -1,0 +1,23 @@
+# Configuración global de Ruff para MindOS
+
+# Considerar código compatible con Python 3.10+
+target-version = "py310"
+line-length = 100
+
+[lint]
+select = [
+    "E",   # Errores pycodestyle
+    "W",   # Advertencias pycodestyle
+    "F",   # Pyflakes
+    "I",   # isort (orden de importaciones)
+    "B",   # flake8-bugbear (errores comunes)
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade (sintaxis moderna)
+]
+ignore = [
+    "E501",  # Ignorar longitud de línea (útil para descripciones de Pydantic y comentarios largos)
+    "B008",  # Ignorar llamadas a Depends en valores por defecto de argumentos (estándar de FastAPI)
+]
+
+[lint.mccabe]
+max-complexity = 10

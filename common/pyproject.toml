@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mindos-common"
+version = "1.0.0"
+description = "Utilidades transversales de logging, observabilidad y manejo de contextos para MindOS"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "structlog>=23.0.0",
+    "redis>=5.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mindos_common*"]
