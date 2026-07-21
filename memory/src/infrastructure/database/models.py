@@ -1,5 +1,15 @@
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -97,3 +107,47 @@ class DbEventLog(Base):
     event_type = Column(String(100), nullable=False)
     payload = Column(JSONB, default=dict, nullable=False)
     logged_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class DbReasoningEpisode(Base):
+    """
+    Un episodio de razonamiento del ciclo Planner→Executor→Reviewer (Thinking Graph, F2-T1).
+    Registra el PROCESO (cómo se llegó a algo), a diferencia de `knowledge_nodes` que registra
+    el resultado (qué se sabe). El `id` coincide con el `correlation_id` de la ejecución.
+    """
+    __tablename__ = "reasoning_episodes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    goal = Column(String, nullable=False)
+    correlation_id = Column(UUID(as_uuid=True), nullable=False)
+    agent = Column(String(100), nullable=False)
+    status = Column(String(20), nullable=False, default="running")  # running|completed|failed|pending_approval
+    started_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    ended_at = Column(DateTime(timezone=True), nullable=True)
+    final_output = Column(String, nullable=True)
+
+    steps = relationship(
+        "DbReasoningStep", back_populates="episode",
+        cascade="all, delete-orphan", order_by="DbReasoningStep.step_index",
+    )
+
+
+class DbReasoningStep(Base):
+    """Un paso individual (plan|execute|review|replan) dentro de un `DbReasoningEpisode`."""
+    __tablename__ = "reasoning_steps"
+
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    episode_id = Column(
+        UUID(as_uuid=True), ForeignKey("reasoning_episodes.id", ondelete="CASCADE"), nullable=False
+    )
+    step_index = Column(Integer, nullable=False)
+    kind = Column(String(20), nullable=False)  # plan|execute|review|replan
+    input = Column(String, nullable=True)
+    output = Column(String, nullable=True)
+    capability_name = Column(String(100), nullable=True)
+    approved = Column(Boolean, nullable=True)  # None = no aplica (ej. paso de tipo 'plan')
+    feedback = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    knowledge_refs = Column(JSONB, default=list, nullable=False)  # [node_id, ...] citados/creados
+
+    episode = relationship("DbReasoningEpisode", back_populates="steps")
