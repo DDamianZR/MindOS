@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from mindos_schemas.api.v1.memory_dto import SourceDto
 
 StepKind = Literal["plan", "execute", "review", "replan", "conclude"]
-EpisodeStatus = Literal["running", "completed", "failed", "pending_approval"]
+EpisodeStatus = Literal["running", "completed", "failed", "pending_approval", "rejected"]
 
 
 class CreateEpisodeRequest(BaseModel):
@@ -37,7 +37,7 @@ class AppendStepRequest(BaseModel):
 
 class CloseEpisodeRequest(BaseModel):
     """DTO para cerrar un episodio."""
-    status: Literal["completed", "failed", "pending_approval"] = Field(..., description="Estado final del episodio")
+    status: EpisodeStatus = Field(..., description="Estado final del episodio")
     final_output: str | None = Field(default=None, description="Resultado final consolidado del episodio")
 
 
