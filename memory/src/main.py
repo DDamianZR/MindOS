@@ -149,6 +149,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+@app.get("/health")
+async def health():
+    """Liveness básico para healthchecks de Docker/Traefik."""
+    return {"status": "ok", "service": "memory", "database": settings.DATABASE_TYPE}
+
+
 @app.post(
     "/api/v1/memory/ingest",
     response_model=IngestKnowledgeResponse,

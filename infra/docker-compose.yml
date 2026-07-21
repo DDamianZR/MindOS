@@ -1,23 +1,29 @@
-version: '3.8'
+# Stack de desarrollo/local de MindOS. Contexto de build = raíz del monorepo (..).
+# Copia .env.example a .env (en la raíz) antes de levantar.
+# Ollama se usa desde el HOST (host.docker.internal). Modelos: qwen3:8b + nomic-embed-text.
+
+name: mindos
 
 services:
   postgres:
-    image: pgvector/pgvector:16
+    image: pgvector/pgvector:pg16
     container_name: mindos-postgres
     environment:
-      POSTGRES_USER: mindos_user
-      POSTGRES_PASSWORD: mindos_secure_password
-      POSTGRES_DB: mindos_db
+      POSTGRES_USER: ${POSTGRES_USER:-mindos_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mindos_secure_password}
+      POSTGRES_DB: ${POSTGRES_DB:-mindos_db}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
+    mem_limit: 2g
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mindos_user -d mindos_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mindos_user} -d ${POSTGRES_DB:-mindos_db}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+    networks: [mindos-net]
 
   redis:
     image: redis:7-alpine
@@ -28,14 +34,88 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
+    mem_limit: 512m
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks: [mindos-net]
+
+  # One-shot: aplica las migraciones Alembic y termina. Memory depende de que complete OK.
+  migrate:
+    build:
+      context: ..
+      dockerfile: memory/Dockerfile
+    container_name: mindos-migrate
+    command: ["alembic", "-c", "memory/alembic.ini", "upgrade", "head"]
+    environment:
+      DATABASE_TYPE: postgres
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-mindos_user}:${POSTGRES_PASSWORD:-mindos_secure_password}@postgres:5432/${POSTGRES_DB:-mindos_db}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks: [mindos-net]
+
+  memory:
+    build:
+      context: ..
+      dockerfile: memory/Dockerfile
+    container_name: mindos-memory
+    environment:
+      MINDOS_ENV: ${MINDOS_ENV:-production}
+      DATABASE_TYPE: postgres
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-mindos_user}:${POSTGRES_PASSWORD:-mindos_secure_password}@postgres:5432/${POSTGRES_DB:-mindos_db}
+      REDIS_URL: redis://redis:6379/0
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-ollama}
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    mem_limit: 768m
+    networks: [mindos-net]
+
+  agents:
+    build:
+      context: ..
+      dockerfile: agents/Dockerfile
+    container_name: mindos-agents
+    environment:
+      MINDOS_ENV: ${MINDOS_ENV:-production}
+      MEMORY_URL: http://memory:8001
+      REDIS_URL: redis://redis:6379/0
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${LLM_MODEL_REASONING:-qwen3:8b}
+    ports:
+      - "8002:8002"
+    depends_on:
+      memory:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    mem_limit: 768m
+    networks: [mindos-net]
 
 volumes:
   postgres_data:
     driver: local
   redis_data:
     driver: local
+
+networks:
+  mindos-net:
+    driver: bridge
