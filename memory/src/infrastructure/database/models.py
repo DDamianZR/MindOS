@@ -3,6 +3,8 @@ from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueCons
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import declarative_base, relationship
 
+from memory.src.config import settings
+
 Base = declarative_base()
 
 class DbCognitiveObject(Base):
@@ -30,7 +32,7 @@ class DbObjectVersion(Base):
     version = Column(Integer, nullable=False)
     title = Column(String(255), nullable=False)
     content = Column(String, nullable=False)
-    embedding = Column(Vector(384), nullable=True) # pgvector de 384 dimensiones
+    embedding = Column(Vector(settings.EMBEDDING_DIM), nullable=True)  # = EMBEDDING_DIM (nomic-embed-text: 768)
     metadata_json = Column("metadata", JSONB, default=dict, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     author = Column(String(100), nullable=False)
