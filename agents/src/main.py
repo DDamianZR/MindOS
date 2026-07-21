@@ -41,6 +41,12 @@ def get_llm_port():
         return OllamaLlm(model_name=settings.OLLAMA_MODEL, base_url=settings.OLLAMA_URL)
     return MockLlm()
 
+@app.get("/health")
+async def health():
+    """Liveness básico para healthchecks de Docker/Traefik."""
+    return {"status": "ok", "service": "agents", "env": settings.MINDOS_ENV}
+
+
 @app.post("/api/v1/capabilities/register", response_model=RegisterCapabilitiesResponse)
 async def register_capabilities(request: RegisterCapabilitiesRequest):
     logger.info("Recibida solicitud de registro de capacidades", count=len(request.capabilities))
