@@ -14,31 +14,18 @@ from mindos_schemas.api.v1.thinking_dto import (
     AppendStepRequest,
     CloseEpisodeRequest,
     CreateEpisodeRequest,
+    ExplainEpisodeResponse,
+    ExplainNodeResponse,
     GetEpisodesByNodeResponse,
     ReasoningEpisodeDto,
-    ReasoningStepDto,
 )
 
+from memory.src.application.services.dto_mappers import episode_dict_to_dto
+from memory.src.application.services.explainability import ExplainabilityService
 from memory.src.config import settings
-from memory.src.main import get_thinking_graph_repo
+from memory.src.main import get_repositories, get_thinking_graph_repo
 
 router = APIRouter(prefix="/api/v1/thinking", tags=["thinking"])
-
-
-def _episode_dict_to_dto(ep: dict) -> ReasoningEpisodeDto:
-    return ReasoningEpisodeDto(
-        id=ep["id"], goal=ep["goal"], correlation_id=ep["correlation_id"], agent=ep["agent"],
-        status=ep["status"], started_at=ep["started_at"], ended_at=ep["ended_at"],
-        final_output=ep["final_output"],
-        steps=[
-            ReasoningStepDto(
-                id=s["id"], episode_id=s["episode_id"], step_index=s["step_index"], kind=s["kind"],
-                input=s["input"], output=s["output"], capability_name=s["capability_name"],
-                approved=s["approved"], feedback=s["feedback"], created_at=s["created_at"],
-                knowledge_refs=s["knowledge_refs"],
-            ) for s in ep.get("steps", [])
-        ],
-    )
 
 
 @router.post("/episodes", status_code=status.HTTP_201_CREATED)
@@ -96,7 +83,7 @@ async def get_episode(
     episode = await thinking_repo.get_episode(episode_id)
     if not episode:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Episodio {episode_id} no encontrado.")
-    return _episode_dict_to_dto(episode)
+    return episode_dict_to_dto(episode)
 
 
 @router.get("/episodes/by-node/{node_id}", response_model=GetEpisodesByNodeResponse)
@@ -106,5 +93,40 @@ async def get_episodes_by_node(
 ):
     episodes = await thinking_repo.get_episodes_by_node(node_id)
     return GetEpisodesByNodeResponse(
-        node_id=node_id, episodes=[_episode_dict_to_dto(ep) for ep in episodes]
+        node_id=node_id, episodes=[episode_dict_to_dto(ep) for ep in episodes]
     )
+
+
+@router.get("/explain/episode/{episode_id}", response_model=ExplainEpisodeResponse)
+async def explain_episode(
+    episode_id: UUID,
+    thinking_repo=Depends(get_thinking_graph_repo),
+    repos=Depends(get_repositories),
+):
+    """F2-T3: narra un episodio de razonamiento paso a paso."""
+    db_repo, _ = repos
+    service = ExplainabilityService(db_repo, thinking_repo)
+    result = await service.explain_episode(episode_id)
+    if not result:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Episodio {episode_id} no encontrado.")
+    return result
+
+
+@router.get("/explain/{node_id}", response_model=ExplainNodeResponse)
+async def explain_node(
+    node_id: UUID,
+    max_depth: int = 3,
+    thinking_repo=Depends(get_thinking_graph_repo),
+    repos=Depends(get_repositories),
+):
+    """
+    F2-T3: "¿cómo llegué a esto?". Recorre hacia atrás las evidencias/decisiones/hipótesis
+    que sustentan el nodo (DECIDES/EVIDENCES/DERIVED_FROM/ANSWERS) y los episodios de
+    razonamiento que lo produjeron o citaron.
+    """
+    db_repo, _ = repos
+    service = ExplainabilityService(db_repo, thinking_repo)
+    result = await service.explain_node(node_id, max_depth=max_depth)
+    if not result:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Nodo {node_id} no encontrado.")
+    return result

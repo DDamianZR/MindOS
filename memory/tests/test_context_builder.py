@@ -47,6 +47,8 @@ class DummyDatabase(DatabasePort):
         return [r for r in self.relations if r["source_id"] == start_node_id]
     async def query_relations_asof(self, start_node_id, at, max_depth):
         return [r for r in self.relations if r["source_id"] == start_node_id]
+    async def query_incoming_relations(self, target_node_id, max_depth):
+        return [r for r in self.relations if r["target_id"] == target_node_id]
     async def save_event_log(self, event_id, event_type, payload): pass
 
 
