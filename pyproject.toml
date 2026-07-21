@@ -1,0 +1,29 @@
+# MindOS — configuración raíz del monorepo.
+# Los paquetes instalables viven en subcarpetas (schemas/, common/) con su propio pyproject.
+# Los servicios (memory/, agents/, gateway/, ...) usan requirements.txt para sus imágenes Docker.
+# Este archivo centraliza la configuración de herramientas de desarrollo (pytest) del workspace.
+
+[project]
+name = "mindos-workspace"
+version = "0.1.0"
+description = "MindOS — Knowledge Operating System (monorepo)"
+requires-python = ">=3.12"
+
+# Dependencias solo de desarrollo/CI. Instala con: pip install -e ".[dev]"
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.24.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["schemas", "common", "memory", "agents"]
+markers = [
+    "integration: pruebas que requieren servicios externos (Ollama, Postgres, Redis)",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+# Ruff se configura en ./ruff.toml (global del monorepo).
