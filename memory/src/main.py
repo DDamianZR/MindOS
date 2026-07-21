@@ -18,6 +18,8 @@ from mindos_schemas.api.v1.memory_dto import (
     SearchKnowledgeResponse,
     SearchResultItem,
     SourceDto,
+    TimeTravelRelationDto,
+    TimeTravelResponse,
     VersionProvenanceDto,
 )
 from mindos_schemas.capabilities import Capability, RegisterCapabilitiesRequest
@@ -376,5 +378,39 @@ async def get_node_provenance(
         ))
 
     return GetNodeProvenanceResponse(node_id=node_id, chain=chain)
+
+@app.get("/api/v1/memory/timetravel", response_model=TimeTravelResponse)
+async def time_travel(
+    node_id: UUID,
+    at: datetime,
+    max_depth: int = 1,
+    repos=Depends(get_repositories)
+):
+    """
+    Consulta temporal "as-of" (F1-T3): reconstruye el estado del nodo (versión + relaciones
+    vigentes) tal como era en el instante `at`. Responde "¿qué pensaba sobre esto en esa fecha?".
+    """
+    db_repo, _ = repos
+
+    ver = await db_repo.get_node_version_asof(node_id, at)
+    if not ver:
+        return TimeTravelResponse(node_id=node_id, at=at, found=False)
+
+    relations = await db_repo.query_relations_asof(node_id, at, max_depth)
+    relation_dtos = [
+        TimeTravelRelationDto(
+            source_id=r["source_id"], target_id=r["target_id"], relation_type=r["relation_type"]
+        ) for r in relations
+    ]
+
+    version_dto = NodeVersionDto(
+        version=ver["version"], title=ver["title"], content=ver["content"], author=ver["author"],
+        created_at=ver["created_at"], parent_version_id=ver["parent_version_id"],
+        confidence=ver.get("confidence", 0.5), importance=ver.get("importance", 0.5),
+        status=ver.get("status", "active"), evidence=ver.get("evidence") or [],
+        salience=ver.get("salience", 0.5), tombstoned_at=ver.get("tombstoned_at"),
+    )
+
+    return TimeTravelResponse(node_id=node_id, at=at, found=True, version=version_dto, relations=relation_dtos)
 
 # Fin del módulo main

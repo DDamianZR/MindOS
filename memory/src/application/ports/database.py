@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -69,6 +70,16 @@ class DatabasePort(ABC):
         """Recupera cronológicamente todas las versiones históricas de un nodo (incluye tombstoneadas)."""
         pass
 
+    @abstractmethod
+    async def get_node_version_asof(self, node_id: UUID, at: datetime) -> dict[str, Any] | None:
+        """
+        Consulta temporal "as-of" (F1-T3): la versión vigente del nodo en el instante `at`
+        (la de mayor `created_at <= at`). Permite reconstruir "qué pensaba en esa fecha".
+        Incluye versiones tombstoneadas: el viaje en el tiempo muestra el estado real de
+        entonces, independientemente de que hoy esté archivado.
+        """
+        pass
+
     # --- Provenance (F1-T2) ---
 
     @abstractmethod
@@ -109,6 +120,16 @@ class DatabasePort(ABC):
         """
         Realiza una consulta recursiva en el grafo de conocimiento para traer
         entidades y relaciones conectadas hasta una profundidad determinada.
+        """
+        pass
+
+    @abstractmethod
+    async def query_relations_asof(
+        self, start_node_id: UUID, at: datetime, max_depth: int
+    ) -> list[dict[str, Any]]:
+        """
+        Variante bitemporal de `query_relations_recursive` (F1-T3): solo sigue relaciones
+        vigentes en el instante `at` (`valid_from <= at AND (valid_to IS NULL OR valid_to > at)`).
         """
         pass
 

@@ -118,6 +118,21 @@ class PgDatabaseRepository(DatabasePort):
         rows = result.all()
         return [self._version_row_to_dict(v, object_type) for v, object_type in rows]
 
+    async def get_node_version_asof(self, node_id: UUID, at: datetime) -> dict[str, Any] | None:
+        stmt = (
+            select(DbObjectVersion, DbCognitiveObject.object_type)
+            .join(DbCognitiveObject, DbObjectVersion.node_id == DbCognitiveObject.id)
+            .where(DbObjectVersion.node_id == node_id, DbObjectVersion.created_at <= at)
+            .order_by(DbObjectVersion.created_at.desc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        row = result.first()
+        if row:
+            ver, object_type = row
+            return self._version_row_to_dict(ver, object_type)
+        return None
+
     async def save_relation(
         self,
         source_id: UUID,
@@ -191,6 +206,43 @@ class PgDatabaseRepository(DatabasePort):
         result = await self.session.execute(
             query,
             {"start_node": start_node_id, "max_depth": max_depth}
+        )
+
+        rows = result.fetchall()
+        return [
+            {
+                "source_id": row[0],
+                "target_id": row[1],
+                "relation_type": row[2],
+                "valid_from": row[3],
+                "valid_to": row[4],
+                "metadata": row[5]
+            } for row in rows
+        ]
+
+    async def query_relations_asof(
+        self, start_node_id: UUID, at: datetime, max_depth: int
+    ) -> list[dict[str, Any]]:
+        # Variante bitemporal (F1-T3): solo sigue relaciones vigentes en el instante `:at`.
+        query = text("""
+            WITH RECURSIVE graph_nodes AS (
+                SELECT source_id, target_id, relation_type, valid_from, valid_to, metadata, 1 as depth
+                FROM relations
+                WHERE source_id = :start_node
+                  AND valid_from <= :at AND (valid_to IS NULL OR valid_to > :at)
+                UNION ALL
+                SELECT r.source_id, r.target_id, r.relation_type, r.valid_from, r.valid_to, r.metadata, gn.depth + 1
+                FROM relations r
+                INNER JOIN graph_nodes gn ON r.source_id = gn.target_id
+                WHERE r.valid_from <= :at AND (r.valid_to IS NULL OR r.valid_to > :at)
+                  AND gn.depth < :max_depth
+            )
+            SELECT source_id, target_id, relation_type, valid_from, valid_to, metadata FROM graph_nodes;
+        """)
+
+        result = await self.session.execute(
+            query,
+            {"start_node": start_node_id, "at": at, "max_depth": max_depth}
         )
 
         rows = result.fetchall()
