@@ -27,7 +27,7 @@ class DummyDatabase(DatabasePort):
         self.relations = relations
 
     async def save_node(self, node_id, entity_type): pass
-    async def save_node_version(self, node_id, version, title, content, author, metadata, parent_version_id=None): pass
+    async def save_node_version(self, node_id, version_id, version, title, content, author, metadata, parent_version_id=None): pass
     async def get_latest_node_version(self, node_id):
         return self.node_versions.get(node_id)
     async def get_node_versions(self, node_id):

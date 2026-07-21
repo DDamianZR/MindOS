@@ -1,9 +1,9 @@
-import uuid
 from uuid import UUID
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, status
 from mindos_common.context import set_correlation_id
+from mindos_common.ids import new_id
 from mindos_common.logging import configure_logging, get_logger
 from mindos_schemas.capabilities import (
     Capability,
@@ -59,8 +59,8 @@ async def execute_agent_goal(
     correlation_id: UUID | None = None,
     llm=Depends(get_llm_port)
 ):
-    # Generar o propagar el correlation_id
-    corr_id = correlation_id or uuid.uuid4() # UUIDv7 simulado
+    # Generar o propagar el correlation_id (UUIDv7)
+    corr_id = correlation_id or new_id()
     set_correlation_id(corr_id)
 
     logger.info("Iniciando ejecución de meta para el usuario", goal=goal, correlation_id=str(corr_id))

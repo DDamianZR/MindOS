@@ -17,6 +17,7 @@ class DatabasePort(ABC):
     async def save_node_version(
         self,
         node_id: UUID,
+        version_id: UUID,
         version: int,
         title: str,
         content: str,
@@ -24,12 +25,22 @@ class DatabasePort(ABC):
         metadata: dict[str, Any],
         parent_version_id: UUID | None = None
     ) -> None:
-        """Inserta una versión inmutable (snapshot) para el nodo."""
+        """
+        Inserta una versión inmutable (snapshot) para el nodo.
+
+        `version_id` es el identificador propio de esta fila de versión (UUIDv7). Debe usarse
+        como `parent_version_id` de la siguiente versión para reconstruir el lineaje histórico.
+        """
         pass
 
     @abstractmethod
     async def get_latest_node_version(self, node_id: UUID) -> dict[str, Any] | None:
-        """Recupera la versión más reciente activa de un nodo."""
+        """
+        Recupera la versión más reciente activa de un nodo.
+
+        El dict devuelto incluye `version_id` (id propio de la fila de versión), necesario para
+        encadenar `parent_version_id` correctamente.
+        """
         pass
 
     @abstractmethod

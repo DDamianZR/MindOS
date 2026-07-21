@@ -5,6 +5,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, status
+from mindos_common.ids import new_id
 from mindos_common.logging import configure_logging, get_logger
 from mindos_schemas.api.v1.memory_dto import (
     GetNodeHistoryResponse,
@@ -122,10 +123,8 @@ async def ingest_knowledge(
     repos=Depends(get_repositories)
 ):
     db_repo, vector_repo = repos
-    # Generar UUIDv7 si es un nuevo nodo
-    import uuid
-
-    node_id = request.node_id or uuid.uuid4() # En prod/python3.12: uuid.uuid7()
+    # Generar UUIDv7 (ordenable temporalmente) si es un nuevo nodo
+    node_id = request.node_id or new_id()
 
     # 1. Guardar en Base de Datos Relacional
     await db_repo.save_node(node_id, request.entity_type)
@@ -134,14 +133,19 @@ async def ingest_knowledge(
     latest_ver = await db_repo.get_latest_node_version(node_id)
     next_version = (latest_ver["version"] + 1) if latest_ver else 1
 
+    # El padre de esta versión es la versión previa (su version_id), NO el node_id.
+    parent_version_id = latest_ver["version_id"] if latest_ver else None
+    version_id = new_id()
+
     await db_repo.save_node_version(
         node_id=node_id,
+        version_id=version_id,
         version=next_version,
         title=request.title,
         content=request.content,
         author=request.author,
         metadata=request.metadata,
-        parent_version_id=latest_ver["node_id"] if latest_ver else None
+        parent_version_id=parent_version_id
     )
 
     # 2. Generar Embedding Vectorial y guardar en pgvector
@@ -156,12 +160,16 @@ async def ingest_knowledge(
         # Guardar en base de datos física
         await db_repo.session.commit()
 
+    # Releer la versión recién creada para devolver su timestamp real de persistencia
+    saved_ver = await db_repo.get_latest_node_version(node_id)
+    created_at = saved_ver["created_at"] if saved_ver else datetime.now(timezone.utc)
+
     return IngestKnowledgeResponse(
         node_id=node_id,
         version=next_version,
         title=request.title,
         author=request.author,
-        created_at=latest_ver["created_at"] if latest_ver else datetime.now(timezone.utc)
+        created_at=created_at
     )
 
 @app.post("/api/v1/memory/search", response_model=SearchKnowledgeResponse)

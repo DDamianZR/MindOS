@@ -35,6 +35,7 @@ class PgDatabaseRepository(DatabasePort):
     async def save_node_version(
         self,
         node_id: UUID,
+        version_id: UUID,
         version: int,
         title: str,
         content: str,
@@ -43,7 +44,7 @@ class PgDatabaseRepository(DatabasePort):
         parent_version_id: UUID | None = None
     ) -> None:
         new_version = DbObjectVersion(
-            id=UUID(int=hash(f"{node_id}-{version}") & ((1<<128)-1)), # Simular ID versionable
+            id=version_id,
             node_id=node_id,
             version=version,
             title=title,
@@ -67,6 +68,7 @@ class PgDatabaseRepository(DatabasePort):
         if ver:
             return {
                 "node_id": ver.node_id,
+                "version_id": ver.id,
                 "version": ver.version,
                 "title": ver.title,
                 "content": ver.content,
@@ -88,6 +90,7 @@ class PgDatabaseRepository(DatabasePort):
         return [
             {
                 "node_id": v.node_id,
+                "version_id": v.id,
                 "version": v.version,
                 "title": v.title,
                 "content": v.content,
