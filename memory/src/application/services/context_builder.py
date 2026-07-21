@@ -1,77 +1,164 @@
+from datetime import datetime, timezone
 from uuid import UUID
+
+from mindos_schemas.api.v1.memory_dto import ContextBundle, ContextFragment, ContextTimelineEntry
 
 from memory.src.application.ports.database import DatabasePort
 from memory.src.application.ports.embedding import EmbeddingPort
 from memory.src.application.ports.vector_store import VectorStorePort
 
+# Cantidad de hitos que se muestran en la sección temporal ("timeline corto", F1-T7).
+_MAX_TIMELINE_ENTRIES = 5
+
 
 class ContextBuilderService:
     """
-    Servicio de dominio/aplicación encargado de construir el contexto estructurado
-    para alimentar el razonamiento de los agentes.
-    Combina RAG vectorial + relaciones semánticas del grafo + metadatos.
+    GraphRAG v2 (F1-T7): construye el contexto estructurado y citable que alimenta el
+    razonamiento de los agentes.
+
+    Combina:
+    1. Similitud vectorial directa (top-k semillas).
+    2. Expansión por grafo desde esas semillas (vecinos hasta `depth`), heredando una
+       similitud descontada (`graph_expansion_decay`) — un nodo relevante conectado a algo
+       ya relevante también es candidato, aunque no haya matcheado el vector directamente.
+    3. Reranking por combinación lineal: similitud + importancia + recencia + confianza.
+    4. Una línea temporal corta y las relaciones conceptuales asociadas, en texto legible.
+
+    Cada fragmento devuelto lleva `node_id`/`version`/`source_id` para que el agente pueda
+    citar su origen ("según [n1]...") y el resultado sea trazable hasta la fuente.
     """
     def __init__(
         self,
         vector_store: VectorStorePort,
         database: DatabasePort,
-        embedding: EmbeddingPort
+        embedding: EmbeddingPort,
+        weight_similarity: float = 0.5,
+        weight_importance: float = 0.2,
+        weight_recency: float = 0.15,
+        weight_confidence: float = 0.15,
+        recency_halflife_days: float = 30.0,
+        graph_expansion_decay: float = 0.7,
     ):
         self.vector_store = vector_store
         self.database = database
         self.embedding = embedding
+        self.weight_similarity = weight_similarity
+        self.weight_importance = weight_importance
+        self.weight_recency = weight_recency
+        self.weight_confidence = weight_confidence
+        self.recency_halflife_days = recency_halflife_days
+        self.graph_expansion_decay = graph_expansion_decay
 
-    async def build_context(self, query: str, limit: int = 3, max_depth: int = 1) -> str:
-        # 1. Obtener vector de la consulta
+    def _recency_score(self, created_at: datetime) -> float:
+        """Decaimiento exponencial por antigüedad: 1.0 recién creado, 0.5 a `recency_halflife_days`."""
+        if self.recency_halflife_days <= 0:
+            return 1.0
+        now = datetime.now(timezone.utc)
+        age_days = max(0.0, (now - created_at).total_seconds() / 86400.0)
+        return 0.5 ** (age_days / self.recency_halflife_days)
+
+    async def build_context(self, query: str, limit: int = 5, depth: int = 1) -> ContextBundle:
         query_vector = await self.embedding.embed_query(query)
-
-        # 2. Buscar nodos similares en el almacén vectorial
         search_results = await self.vector_store.search(query_vector, limit=limit)
 
-        context_parts = []
-        context_parts.append("=== CONTEXTO SEMÁNTICO DIRECTO ===")
-
-        related_node_ids = []
-        for idx, res in enumerate(search_results):
+        # node_id -> (similitud_heredada, via_graph). Las semillas vectoriales entran primero
+        # con via_graph=False; la expansión por grafo solo puede AÑADIR nodos o mejorar su
+        # score, nunca "quitarle" a un hit directo su condición de hallado directamente.
+        candidates: dict[UUID, tuple[float, bool]] = {}
+        for res in search_results:
             try:
                 node_id = UUID(res.id)
-                related_node_ids.append(node_id)
-
-                # Obtener la versión más reciente del nodo
-                ver = await self.database.get_latest_node_version(node_id)
-                if ver:
-                    context_parts.append(
-                        f"[{idx+1}] Nodo: {ver['title']} (Tipo: {res.payload.get('type')})\n"
-                        f"Contenido: {ver['content']}\n"
-                        f"Fecha: {ver['created_at'].isoformat()}\n"
-                    )
             except ValueError:
-                # Si el ID no es un UUID válido en simulación
-                context_parts.append(
-                    f"[{idx+1}] Nodo ID inválido ({res.id}): {res.payload.get('title')}\n"
-                )
+                continue
+            similarity = max(0.0, res.score)
+            prev = candidates.get(node_id)
+            if prev is None or similarity > prev[0]:
+                candidates[node_id] = (similarity, False)
 
-        # 3. Traer grafo de relaciones asociadas
-        context_parts.append("\n=== RELACIONES CONCEPTUALES ASOCIADAS (GRAFO) ===")
-        relations_found = False
-
-        for node_id in related_node_ids:
-            relations = await self.database.query_relations_recursive(node_id, max_depth=max_depth)
+        # Expansión por grafo desde cada semilla, deduplicando nodos y aristas ya vistos.
+        relation_edges: dict[tuple[UUID, UUID, str], dict] = {}
+        for seed_id, (seed_similarity, _) in list(candidates.items()):
+            relations = await self.database.query_relations_recursive(seed_id, max_depth=depth)
             for rel in relations:
-                relations_found = True
+                edge_key = (rel["source_id"], rel["target_id"], rel["relation_type"])
+                relation_edges[edge_key] = rel
 
-                # Intentar traer títulos de los nodos de origen y destino para legibilidad del prompt
-                source_ver = await self.database.get_latest_node_version(rel["source_id"])
-                target_ver = await self.database.get_latest_node_version(rel["target_id"])
+                inherited = seed_similarity * self.graph_expansion_decay
+                target_id = rel["target_id"]
+                prev = candidates.get(target_id)
+                if prev is None or inherited > prev[0]:
+                    candidates[target_id] = (inherited, prev[1] if prev else True)
 
-                source_title = source_ver["title"] if source_ver else str(rel["source_id"])
-                target_title = target_ver["title"] if target_ver else str(rel["target_id"])
+        # Resolver la versión activa de cada candidato (F1-T4: excluye archivados por defecto)
+        # y calcular el score combinado.
+        version_cache: dict[UUID, dict] = {}
+        scored: list[tuple[float, UUID, dict, float, bool]] = []
+        for node_id, (similarity, via_graph) in candidates.items():
+            ver = await self.database.get_latest_node_version(node_id)
+            if not ver:
+                continue
+            version_cache[node_id] = ver
 
-                context_parts.append(
-                    f"- {source_title} ==[{rel['relation_type']}]==> {target_title}"
-                )
+            importance = ver.get("importance", 0.5)
+            confidence = ver.get("confidence", 0.5)
+            recency = self._recency_score(ver["created_at"])
+            score = (
+                self.weight_similarity * similarity
+                + self.weight_importance * importance
+                + self.weight_recency * recency
+                + self.weight_confidence * confidence
+            )
+            scored.append((score, node_id, ver, similarity, via_graph))
 
-        if not relations_found:
-            context_parts.append("No se detectaron relaciones conectadas de primer grado.")
+        # Ordenar por score combinado y truncar al límite final solicitado.
+        scored.sort(key=lambda item: item[0], reverse=True)
+        top = scored[:limit]
 
-        return "\n".join(context_parts)
+        fragments = [
+            ContextFragment(
+                citation_label=f"n{i + 1}",
+                node_id=node_id,
+                version=ver["version"],
+                title=ver["title"],
+                content=ver["content"],
+                object_type=ver.get("object_type"),
+                source_id=ver.get("provenance_source_id"),
+                score=round(score, 4),
+                similarity=round(similarity, 4),
+                importance=ver.get("importance", 0.5),
+                confidence=ver.get("confidence", 0.5),
+                recency=round(self._recency_score(ver["created_at"]), 4),
+                via_graph=via_graph,
+            )
+            for i, (score, node_id, ver, similarity, via_graph) in enumerate(top)
+        ]
+
+        # Timeline corto: los mismos fragmentos seleccionados, ordenados por fecha de creación.
+        timeline_source = sorted(
+            ((f.node_id, version_cache[f.node_id]) for f in fragments),
+            key=lambda pair: pair[1]["created_at"],
+            reverse=True,
+        )
+        timeline = [
+            ContextTimelineEntry(node_id=nid, version=v["version"], title=v["title"], created_at=v["created_at"])
+            for nid, v in timeline_source[:_MAX_TIMELINE_ENTRIES]
+        ]
+
+        # Relaciones legibles: solo las aristas con al menos un extremo entre los fragmentos finales.
+        final_ids = {f.node_id for f in fragments}
+        relations_summary = []
+        for (src_id, tgt_id, relation_type), _rel in relation_edges.items():
+            if src_id not in final_ids and tgt_id not in final_ids:
+                continue
+            src_ver = version_cache.get(src_id) or await self.database.get_latest_node_version(src_id)
+            tgt_ver = version_cache.get(tgt_id) or await self.database.get_latest_node_version(tgt_id)
+            src_title = src_ver["title"] if src_ver else str(src_id)
+            tgt_title = tgt_ver["title"] if tgt_ver else str(tgt_id)
+            relations_summary.append(f"- {src_title} ==[{relation_type}]==> {tgt_title}")
+
+        return ContextBundle(
+            query=query,
+            fragments=fragments,
+            timeline=timeline,
+            relations_summary=relations_summary,
+        )

@@ -11,6 +11,8 @@ from mindos_common.ids import new_id
 from mindos_common.logging import configure_logging, get_logger
 from mindos_schemas.api.v1.memory_dto import (
     ArchiveNodeResponse,
+    ContextBundle,
+    ContextRequest,
     CreateRelationRequest,
     CreateRelationResponse,
     GetNodeHistoryResponse,
@@ -37,6 +39,7 @@ from mindos_schemas.events.v1.memory_events import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from memory.src.application.services.context_builder import ContextBuilderService
 from memory.src.config import settings
 from memory.src.infrastructure.adapters.in_memory_database import InMemoryDatabase
 from memory.src.infrastructure.adapters.in_memory_vector_store import InMemoryVectorStore
@@ -593,5 +596,30 @@ async def get_node_neighbors(
         ) for r in relations
     ]
     return GetNodeNeighborsResponse(node_id=node_id, depth=depth, neighbors=neighbors)
+
+
+@app.post("/api/v1/memory/context", response_model=ContextBundle)
+async def get_context(
+    request: ContextRequest,
+    repos=Depends(get_repositories)
+):
+    """
+    Context Builder v2 / GraphRAG (F1-T7): contexto estructurado y citable para agentes.
+    Combina similitud vectorial + expansión por grafo + reranking por importancia/recencia/
+    confianza. Usado por el servicio de Agents en vez de construir el prompt a mano.
+    """
+    db_repo, vector_repo = repos
+    context_builder = ContextBuilderService(
+        vector_store=vector_repo,
+        database=db_repo,
+        embedding=embedding_provider,
+        weight_similarity=settings.CONTEXT_WEIGHT_SIMILARITY,
+        weight_importance=settings.CONTEXT_WEIGHT_IMPORTANCE,
+        weight_recency=settings.CONTEXT_WEIGHT_RECENCY,
+        weight_confidence=settings.CONTEXT_WEIGHT_CONFIDENCE,
+        recency_halflife_days=settings.CONTEXT_RECENCY_HALFLIFE_DAYS,
+        graph_expansion_decay=settings.CONTEXT_GRAPH_EXPANSION_DECAY,
+    )
+    return await context_builder.build_context(request.query, limit=request.limit, depth=request.depth)
 
 # Fin del módulo main

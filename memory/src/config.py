@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     # Dedup semántico en ingest (F1-T5)
     DEDUP_SIMILARITY_THRESHOLD: float = 0.92
 
+    # Context Builder v2 / GraphRAG (F1-T7): pesos del reranking (deben sumar ~1.0, no se valida)
+    CONTEXT_WEIGHT_SIMILARITY: float = 0.5
+    CONTEXT_WEIGHT_IMPORTANCE: float = 0.2
+    CONTEXT_WEIGHT_RECENCY: float = 0.15
+    CONTEXT_WEIGHT_CONFIDENCE: float = 0.15
+    CONTEXT_RECENCY_HALFLIFE_DAYS: float = 30.0  # recencia=0.5 a esta antigüedad; decae exponencialmente
+    CONTEXT_GRAPH_EXPANSION_DECAY: float = 0.7  # descuento de similitud heredada para nodos hallados por grafo
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
