@@ -53,3 +53,15 @@ class KnowledgeArchivedEventData(BaseModel):
     Nunca implica borrado físico: solo el cambio del flag `tombstoned_at` de la versión vigente.
     """
     node_id: UUID = Field(..., description="ID del nodo de conocimiento archivado o restaurado")
+
+
+class ContradictionDetectedEventData(BaseModel):
+    """
+    Payload de datos para el evento com.mindos.memory.contradiction.detected (F2-T5).
+    Emitido cuando el detector confirma (vía LLM) una contradicción lógica entre dos nodos,
+    para que otros consumidores (digest, Dashboard) puedan surfacearla al usuario.
+    """
+    node_a_id: UUID = Field(..., description="Primer nodo de la contradicción")
+    node_b_id: UUID = Field(..., description="Segundo nodo de la contradicción")
+    rationale: str = Field(..., description="Explicación de por qué se consideran contradictorios")
+    confidence: float = Field(..., description="Confianza de la detección (0-1)")

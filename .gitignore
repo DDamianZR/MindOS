@@ -32,3 +32,6 @@ build/
 Thumbs.db
 .idea/
 .vscode/
+
+# Tooling del agente (Claude Code)
+.claude/

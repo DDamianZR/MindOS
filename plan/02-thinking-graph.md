@@ -120,7 +120,7 @@ agentes y el MCP los usen).
 
 ## Cierre de Fase 2
 - [x] F2-T1 modelo · [x] F2-T2 trazas · [x] F2-T3 explain · [x] F2-T4 cognitive API
-- [ ] F2-T5 contradicciones · [ ] F2-T6 decisiones
+- [x] F2-T5 contradicciones · [x] F2-T6 decisiones
 
 **Hito:** en este punto MindOS ya **se siente** como la visión aunque no tenga dashboard ni WhatsApp:
 responde las 7 preguntas y explica su razonamiento por API.
