@@ -91,6 +91,18 @@ class DatabasePort(ABC):
         """
         pass
 
+    @abstractmethod
+    async def list_node_versions_since(
+        self, since: datetime | None, limit: int
+    ) -> list[dict[str, Any]]:
+        """
+        Lista la versión más reciente ACTIVA de cada nodo (excluye tombstoneados), ordenadas
+        por `created_at` descendente, opcionalmente desde una fecha (F2-T4, `/cognitive/patterns`).
+        No es un listado paginado completo del grafo: es la base de agregaciones simples
+        (conteo por tipo/periodo). `limit` acota cuántos nodos se consideran.
+        """
+        pass
+
     # --- Provenance (F1-T2) ---
 
     @abstractmethod

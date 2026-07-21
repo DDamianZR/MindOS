@@ -114,9 +114,68 @@ async def get_thinking_graph_repo(session: AsyncSession = Depends(get_db_session
         return PgThinkingGraphRepository(session)
     return in_memory_thinking_graph
 
+def _cognitive_capabilities() -> list[Capability]:
+    """
+    Capacidades de la Cognitive Query API (F2-T4): las 7 preguntas insignia, expuestas como
+    capacidades para que los agentes (y, más adelante, el MCP) puedan invocarlas igual que
+    cualquier otra herramienta del ecosistema.
+    """
+    return [
+        Capability(
+            name="explain_node",
+            description="Explica cómo se llegó a un nodo de conocimiento: evidencias, decisiones y episodios",
+            parameters_schema={"type": "object", "properties": {"node_id": {"type": "string"}},
+                                "required": ["node_id"]},
+            provider_service="memory", endpoint_path="/api/v1/thinking/explain/{node_id}",
+        ),
+        Capability(
+            name="cognitive_past_thinking",
+            description="Qué se pensaba sobre un tema en una fecha pasada",
+            parameters_schema={"type": "object", "properties": {
+                "topic": {"type": "string"}, "at": {"type": "string", "format": "date-time"}},
+                "required": ["topic", "at"]},
+            provider_service="memory", endpoint_path="/api/v1/cognitive/past-thinking",
+        ),
+        Capability(
+            name="cognitive_similar",
+            description="Ideas o hipótesis similares a un nodo dado, ordenadas por fecha",
+            parameters_schema={"type": "object", "properties": {"node_id": {"type": "string"}},
+                                "required": ["node_id"]},
+            provider_service="memory", endpoint_path="/api/v1/cognitive/similar",
+        ),
+        Capability(
+            name="cognitive_decisions",
+            description="Decisiones tomadas sobre un tema, con su rationale y evidencia",
+            parameters_schema={"type": "object", "properties": {"topic": {"type": "string"}},
+                                "required": ["topic"]},
+            provider_service="memory", endpoint_path="/api/v1/cognitive/decisions",
+        ),
+        Capability(
+            name="cognitive_support",
+            description="Qué evidencia respalda un nodo de conocimiento (recomendación, hipótesis...)",
+            parameters_schema={"type": "object", "properties": {"node_id": {"type": "string"}},
+                                "required": ["node_id"]},
+            provider_service="memory", endpoint_path="/api/v1/cognitive/support",
+        ),
+        Capability(
+            name="cognitive_contradictions",
+            description="Contradicciones detectadas en el conocimiento sobre un tema",
+            parameters_schema={"type": "object", "properties": {"topic": {"type": "string"}},
+                                "required": ["topic"]},
+            provider_service="memory", endpoint_path="/api/v1/cognitive/contradictions",
+        ),
+        Capability(
+            name="cognitive_patterns",
+            description="Patrones y temas más frecuentes en el conocimiento capturado, por periodo",
+            parameters_schema={"type": "object", "properties": {}},
+            provider_service="memory", endpoint_path="/api/v1/cognitive/patterns",
+        ),
+    ]
+
+
 async def register_capabilities():
     """Registra de forma proactiva las capacidades del servicio de memoria en el agente Planner."""
-    cap = Capability(
+    search_cap = Capability(
         name="search_knowledge",
         description="Busca en la base semántica y grafo de conocimiento de MindOS",
         parameters_schema={
@@ -129,13 +188,14 @@ async def register_capabilities():
         provider_service="memory",
         endpoint_path="/api/v1/memory/search"
     )
+    all_caps = [search_cap, *_cognitive_capabilities()]
 
     # URL de registro del servicio agents en el docker bridge network
     url = "http://agents:8002/api/v1/capabilities/register"
     # Fallback local para desarrollo fuera de docker
     fallback_url = "http://localhost:8002/api/v1/capabilities/register"
 
-    payload = RegisterCapabilitiesRequest(capabilities=[cap])
+    payload = RegisterCapabilitiesRequest(capabilities=all_caps)
 
     logger.info("Registrando capacidades de Memoria en el ecosistema...")
     async with httpx.AsyncClient(timeout=5.0) as client:
@@ -632,10 +692,13 @@ async def get_context(
     return await context_builder.build_context(request.query, limit=request.limit, depth=request.depth)
 
 
-# Routers de Fase 2 (Thinking Graph, F2-T1+). Se importan al final para evitar ciclos: estos
-# routers importan `get_thinking_graph_repo` desde este mismo módulo.
+# Routers de Fase 2 (Thinking Graph F2-T1+, Cognitive Query API F2-T4). Se importan al final
+# para evitar ciclos: estos routers importan `get_repositories`/`get_thinking_graph_repo`
+# desde este mismo módulo.
+from memory.src.api.cognitive_router import router as cognitive_router  # noqa: E402
 from memory.src.api.thinking_router import router as thinking_router  # noqa: E402
 
 app.include_router(thinking_router)
+app.include_router(cognitive_router)
 
 # Fin del módulo main
