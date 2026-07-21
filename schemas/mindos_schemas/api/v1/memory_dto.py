@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -80,6 +80,15 @@ class IngestKnowledgeRequest(BaseModel):
         default=None,
         description="Origen de esta captura (F1-T2). Los eventos de comunicación (Fase 3) siempre lo incluyen."
     )
+    on_duplicate: Literal["link", "new_version", "force_new"] = Field(
+        default="link",
+        description=(
+            "Comportamiento si el contenido es casi-idéntico a un nodo existente (F1-T5, solo "
+            "aplica cuando no se provee `node_id`): 'link' crea un nodo nuevo enlazado por "
+            "DUPLICATE_OF (default); 'new_version' versiona el nodo existente en vez de crear uno "
+            "nuevo; 'force_new' ignora la coincidencia y crea un nodo aislado como antes."
+        )
+    )
 
 
 class IngestKnowledgeResponse(BaseModel):
@@ -95,6 +104,14 @@ class IngestKnowledgeResponse(BaseModel):
     confidence: float = Field(..., description="Confianza persistida (0-1)")
     importance: float = Field(..., description="Importancia persistida (0-1)")
     status: ObjectStatus = Field(..., description="Estado de ciclo de vida persistido")
+    duplicate_of: UUID | None = Field(
+        default=None,
+        description="Nodo existente casi-idéntico detectado por dedup semántico (F1-T5), si lo hubo"
+    )
+    duplicate_score: float | None = Field(
+        default=None,
+        description="Similitud coseno con `duplicate_of` (0-1), si hubo dedup"
+    )
 
 
 class SearchResultItem(BaseModel):

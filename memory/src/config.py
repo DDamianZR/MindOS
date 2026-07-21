@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # Event Bus
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Dedup semántico en ingest (F1-T5)
+    DEDUP_SIMILARITY_THRESHOLD: float = 0.92
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
