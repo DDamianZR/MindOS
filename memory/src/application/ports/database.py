@@ -28,6 +28,7 @@ class DatabasePort(ABC):
         importance: float = 0.5,
         status: str = "active",
         evidence: list[dict[str, Any]] | None = None,
+        provenance_source_id: UUID | None = None,
     ) -> None:
         """
         Inserta una versión inmutable (snapshot) para el nodo.
@@ -39,6 +40,10 @@ class DatabasePort(ABC):
         y `evidence` (lista de `{node_id|url|quote, weight}`) son los atributos cognitivos ricos
         del Objeto Cognitivo (F1-T1). `salience` no se recibe aquí: nace con el default de la
         columna y la recalcula el agente de consolidación (Fase 5).
+
+        `provenance_source_id` (F1-T2) enlaza esta versión con su `Source` de origen (whatsapp,
+        pdf, cli, ...). Se nombra distinto de `source_id`/`target_id` de las relaciones del grafo
+        para evitar ambigüedad: aquí "source" significa procedencia, no nodo origen de una arista.
         """
         pass
 
@@ -50,8 +55,9 @@ class DatabasePort(ABC):
         Recupera la versión más reciente activa de un nodo.
 
         El dict devuelto incluye `version_id` (id propio de la fila de versión, necesario para
-        encadenar `parent_version_id`), `object_type` (del nodo padre) y los atributos cognitivos
-        ricos (`confidence`, `importance`, `status`, `evidence`, `salience`, `tombstoned_at`).
+        encadenar `parent_version_id`), `object_type` (del nodo padre), los atributos cognitivos
+        ricos (`confidence`, `importance`, `status`, `evidence`, `salience`, `tombstoned_at`) y
+        `provenance_source_id` (F1-T2, la fuente de origen si la hay).
 
         Por defecto excluye versiones tombstoneadas (`tombstoned_at IS NOT NULL`); pasar
         `include_archived=True` para incluirlas (F1-T4).
@@ -61,6 +67,25 @@ class DatabasePort(ABC):
     @abstractmethod
     async def get_node_versions(self, node_id: UUID) -> list[dict[str, Any]]:
         """Recupera cronológicamente todas las versiones históricas de un nodo (incluye tombstoneadas)."""
+        pass
+
+    # --- Provenance (F1-T2) ---
+
+    @abstractmethod
+    async def find_source_by_kind_uri(self, kind: str, uri: str) -> dict[str, Any] | None:
+        """Busca una fuente existente por (kind, uri) para reutilizarla en vez de duplicarla."""
+        pass
+
+    @abstractmethod
+    async def save_source(
+        self, source_id: UUID, kind: str, uri: str | None, raw_ref: str | None, metadata: dict[str, Any]
+    ) -> None:
+        """Crea una nueva fuente de origen (provenance): whatsapp, pdf, imagen, audio, web, cli, api, agente."""
+        pass
+
+    @abstractmethod
+    async def get_source(self, source_id: UUID) -> dict[str, Any] | None:
+        """Recupera una fuente de origen por su id."""
         pass
 
     @abstractmethod

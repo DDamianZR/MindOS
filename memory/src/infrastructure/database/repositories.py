@@ -11,6 +11,7 @@ from memory.src.infrastructure.database.models import (
     DbCognitiveRelation,
     DbEventLog,
     DbObjectVersion,
+    DbSource,
 )
 
 
@@ -46,6 +47,7 @@ class PgDatabaseRepository(DatabasePort):
         importance: float = 0.5,
         status: str = "active",
         evidence: list[dict[str, Any]] | None = None,
+        provenance_source_id: UUID | None = None,
     ) -> None:
         new_version = DbObjectVersion(
             id=version_id,
@@ -60,6 +62,7 @@ class PgDatabaseRepository(DatabasePort):
             importance=importance,
             status=status,
             evidence=evidence or [],
+            source_id=provenance_source_id,
         )
         self.session.add(new_version)
         await self.session.flush()
@@ -82,6 +85,7 @@ class PgDatabaseRepository(DatabasePort):
             "evidence": ver.evidence,
             "salience": ver.salience,
             "tombstoned_at": ver.tombstoned_at,
+            "provenance_source_id": ver.source_id,
         }
 
     async def get_latest_node_version(
@@ -209,3 +213,32 @@ class PgDatabaseRepository(DatabasePort):
         )
         self.session.add(new_event)
         await self.session.flush()
+
+    def _source_row_to_dict(self, src: DbSource) -> dict[str, Any]:
+        return {
+            "id": src.id,
+            "kind": src.kind,
+            "uri": src.uri,
+            "raw_ref": src.raw_ref,
+            "captured_at": src.captured_at,
+            "metadata": src.metadata_json,
+        }
+
+    async def find_source_by_kind_uri(self, kind: str, uri: str) -> dict[str, Any] | None:
+        stmt = select(DbSource).where(DbSource.kind == kind, DbSource.uri == uri).limit(1)
+        result = await self.session.execute(stmt)
+        src = result.scalar_one_or_none()
+        return self._source_row_to_dict(src) if src else None
+
+    async def save_source(
+        self, source_id: UUID, kind: str, uri: str | None, raw_ref: str | None, metadata: dict[str, Any]
+    ) -> None:
+        new_source = DbSource(id=source_id, kind=kind, uri=uri, raw_ref=raw_ref, metadata_json=metadata)
+        self.session.add(new_source)
+        await self.session.flush()
+
+    async def get_source(self, source_id: UUID) -> dict[str, Any] | None:
+        stmt = select(DbSource).where(DbSource.id == source_id)
+        result = await self.session.execute(stmt)
+        src = result.scalar_one_or_none()
+        return self._source_row_to_dict(src) if src else None

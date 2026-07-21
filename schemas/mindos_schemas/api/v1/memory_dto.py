@@ -4,7 +4,29 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from mindos_schemas.domain import ObjectStatus, ObjectType
+from mindos_schemas.domain import ObjectStatus, ObjectType, SourceKind
+
+
+class SourceInput(BaseModel):
+    """
+    Origen de una captura (provenance, F1-T2), provisto opcionalmente en la ingesta.
+    Si `uri` coincide con una fuente ya registrada del mismo `kind`, se reutiliza en vez
+    de crear una fuente duplicada (p.ej. reprocesar el mismo PDF o mensaje de WhatsApp).
+    """
+    kind: SourceKind = Field(..., description="Tipo de origen (whatsapp, pdf, image, audio, web, cli, api, agent)")
+    uri: str | None = Field(default=None, description="Identificador/ubicación estable del origen")
+    raw_ref: str | None = Field(default=None, description="Referencia al artefacto crudo (id de mensaje, ruta...)")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Metadatos crudos específicos del canal")
+
+
+class SourceDto(BaseModel):
+    """Representación de una fuente de origen ya persistida."""
+    id: UUID = Field(..., description="ID de la fuente")
+    kind: SourceKind = Field(..., description="Tipo de origen")
+    uri: str | None = Field(default=None, description="Identificador/ubicación estable del origen")
+    raw_ref: str | None = Field(default=None, description="Referencia al artefacto crudo")
+    captured_at: datetime = Field(..., description="Fecha de captura de esta fuente")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Metadatos crudos del canal")
 
 
 class EvidenceItem(BaseModel):
@@ -53,6 +75,10 @@ class IngestKnowledgeRequest(BaseModel):
     evidence: list[EvidenceItem] = Field(
         default_factory=list,
         description="Evidencias que respaldan esta información"
+    )
+    source: SourceInput | None = Field(
+        default=None,
+        description="Origen de esta captura (F1-T2). Los eventos de comunicación (Fase 3) siempre lo incluyen."
     )
 
 
@@ -120,3 +146,20 @@ class GetNodeHistoryResponse(BaseModel):
     node_id: UUID = Field(..., description="ID del nodo de conocimiento")
     object_type: ObjectType = Field(..., description="Tipo de Objeto Cognitivo")
     versions: list[NodeVersionDto] = Field(..., description="Lista cronológica de versiones")
+
+
+class VersionProvenanceDto(BaseModel):
+    """La fuente de origen (si existe) de una versión específica del nodo."""
+    version: int = Field(..., description="Número de versión")
+    created_at: datetime = Field(..., description="Fecha de creación de la versión")
+    author: str = Field(..., description="Autor de la versión")
+    source: SourceDto | None = Field(default=None, description="Fuente de origen de esta versión, si la tiene")
+
+
+class GetNodeProvenanceResponse(BaseModel):
+    """
+    Respuesta de trazabilidad de origen (F1-T2): la cadena de versiones del nodo junto con
+    la fuente de la que provino cada una (whatsapp, pdf, cli, ...), cuando se conoce.
+    """
+    node_id: UUID = Field(..., description="ID del nodo de conocimiento")
+    chain: list[VersionProvenanceDto] = Field(..., description="Cadena cronológica de versiones + su fuente")

@@ -29,9 +29,12 @@ class DummyDatabase(DatabasePort):
     async def save_node(self, node_id, object_type): pass
     async def save_node_version(self, node_id, version_id, version, title, content, author, metadata,
                                  parent_version_id=None, confidence=0.5, importance=0.5,
-                                 status="active", evidence=None): pass
+                                 status="active", evidence=None, provenance_source_id=None): pass
     async def get_latest_node_version(self, node_id, include_archived=False):
         return self.node_versions.get(node_id)
+    async def find_source_by_kind_uri(self, kind, uri): return None
+    async def save_source(self, source_id, kind, uri, raw_ref, metadata): pass
+    async def get_source(self, source_id): return None
     async def get_node_versions(self, node_id):
         return [self.node_versions.get(node_id)] if node_id in self.node_versions else []
     async def save_relation(self, source_id, target_id, relation_type, metadata): pass
