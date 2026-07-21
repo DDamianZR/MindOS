@@ -31,7 +31,7 @@ from mindos_schemas.api.v1.memory_dto import (
     VersionProvenanceDto,
 )
 from mindos_schemas.capabilities import Capability, RegisterCapabilitiesRequest
-from mindos_schemas.domain import ObjectType, RelationType
+from mindos_schemas.domain import RelationType
 from mindos_schemas.events.v1.memory_events import (
     ContradictionDetectedEventData,
     KnowledgeArchivedEventData,
@@ -42,7 +42,10 @@ from mindos_schemas.events.v1.memory_events import (
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from memory.src.application.services.context_builder import ContextBuilderService
-from memory.src.application.services.contradiction_detector import ContradictionDetectorService
+from memory.src.application.services.contradiction_detector import (
+    CONTRADICTABLE_TYPES,
+    ContradictionDetectorService,
+)
 from memory.src.config import settings
 from memory.src.infrastructure.adapters.in_memory_database import InMemoryDatabase
 from memory.src.infrastructure.adapters.in_memory_thinking_graph import InMemoryThinkingGraph
@@ -404,7 +407,7 @@ async def ingest_knowledge(
 
     # 7. Detección de contradicciones on-ingest (F2-T5): solo para afirmaciones fuertes
     # (fact/hypothesis), donde una contradicción lógica es más significativa que en una nota libre.
-    if request.object_type in (ObjectType.FACT, ObjectType.HYPOTHESIS):
+    if request.object_type in CONTRADICTABLE_TYPES:
         detector = ContradictionDetectorService(db_repo, vector_repo, embedding_provider, llm_provider)
         detected = await detector.check_node_for_contradictions(
             node_id, top_k=settings.CONTRADICTION_TOP_K,

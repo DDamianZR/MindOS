@@ -3,6 +3,7 @@ from typing import Any
 from uuid import UUID
 
 from mindos_common.logging import get_logger
+from mindos_schemas.domain import ObjectType
 
 from memory.src.application.ports.database import DatabasePort
 from memory.src.application.ports.embedding import EmbeddingPort
@@ -12,6 +13,12 @@ from memory.src.application.ports.vector_store import VectorStorePort
 logger = get_logger("contradiction_detector")
 
 CONTRADICTS = "CONTRADICTS"
+
+# Tipos "afirmación" entre los que una contradicción lógica tiene sentido. Se usa tanto para
+# decidir qué nodos disparan el chequeo on-ingest (main.py) como para filtrar candidatos aquí:
+# comparar un `fact` contra una `idea`/`decision` no comparable generaría CONTRADICTS espurios
+# (bug encontrado en el smoke test de cierre de Fase 2, ver plan/NOTAS.md).
+CONTRADICTABLE_TYPES = {ObjectType.FACT, ObjectType.HYPOTHESIS}
 
 
 class ContradictionDetectorService:
@@ -81,7 +88,7 @@ class ContradictionDetectorService:
                 continue
 
             candidate_ver = await self.database.get_latest_node_version(candidate_id)
-            if not candidate_ver:
+            if not candidate_ver or candidate_ver.get("object_type") not in CONTRADICTABLE_TYPES:
                 continue
 
             verdict = await self._ask_llm_for_contradiction(node_ver["content"], candidate_ver["content"])
