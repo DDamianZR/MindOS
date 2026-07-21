@@ -22,6 +22,7 @@ from memory.src.config import settings
 from memory.src.infrastructure.adapters.in_memory_database import InMemoryDatabase
 from memory.src.infrastructure.adapters.in_memory_vector_store import InMemoryVectorStore
 from memory.src.infrastructure.adapters.mock_embedding import MockEmbedding
+from memory.src.infrastructure.adapters.ollama_embedding import OllamaEmbedding
 from memory.src.infrastructure.database.repositories import PgDatabaseRepository
 from memory.src.infrastructure.vector.pgvector import PgVectorStoreRepository
 
@@ -31,7 +32,18 @@ logger = get_logger("memory_main")
 # Instanciar almacenes en memoria compartidos si DATABASE_TYPE es 'in_memory'
 in_memory_db = InMemoryDatabase()
 in_memory_vector_store = InMemoryVectorStore()
-mock_embedding = MockEmbedding()
+
+
+def _make_embedding():
+    """Selecciona el proveedor de embeddings segun configuracion (real Ollama o mock)."""
+    if settings.EMBEDDING_PROVIDER == "ollama":
+        logger.info("Embeddings via Ollama", model=settings.EMBEDDING_MODEL, dim=settings.EMBEDDING_DIM)
+        return OllamaEmbedding(settings.OLLAMA_URL, settings.EMBEDDING_MODEL)
+    logger.info("Embeddings via Mock (dim=%s)", settings.EMBEDDING_DIM)
+    return MockEmbedding(settings.EMBEDDING_DIM)
+
+
+embedding_provider = _make_embedding()
 
 # Configurar motor SQLAlchemy asíncrono para PostgreSQL
 engine = create_async_engine(settings.DATABASE_URL, echo=False)
@@ -149,7 +161,7 @@ async def ingest_knowledge(
     )
 
     # 2. Generar Embedding Vectorial y guardar en pgvector
-    vector = await mock_embedding.embed_query(request.content)
+    vector = await embedding_provider.embed_query(request.content)
     await vector_repo.upsert(
         vector_id=str(node_id),
         embedding=vector,
@@ -180,7 +192,7 @@ async def search_knowledge(
 ):
     db_repo, vector_repo = repos
     # Realizar búsqueda semántica e híbrida
-    query_vector = await mock_embedding.embed_query(query)
+    query_vector = await embedding_provider.embed_query(query)
     vector_results = await vector_repo.search(query_vector, limit=limit)
 
     results = []

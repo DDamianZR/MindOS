@@ -39,28 +39,29 @@ class PgVectorStoreRepository(VectorStorePort):
         limit: int,
         filters: dict[str, Any] | None = None
     ) -> list[VectorSearchResult]:
-        # Búsqueda semántica usando el operador de distancia coseno de pgvector (<=>)
-        # Ordena ascendentemente por distancia, lo que equivale a mayor similitud coseno
+        # Búsqueda semántica usando el operador de distancia coseno de pgvector (<=>).
+        # Seleccionamos también la distancia para convertirla en un score real de similitud.
+        distance = DbObjectVersion.embedding.cosine_distance(query_embedding)
         stmt = (
-            select(DbObjectVersion)
+            select(DbObjectVersion, distance.label("distance"))
             .where(DbObjectVersion.embedding.isnot(None))
-            .order_by(DbObjectVersion.embedding.cosine_distance(query_embedding).asc())
+            .order_by(distance.asc())
             .limit(limit)
         )
         result = await self.session.execute(stmt)
-        versions = result.scalars().all()
+        rows = result.all()  # tuplas (DbObjectVersion, distance)
 
-        # Mapear las filas de versiones de SQLAlchemy al DTO genérico del puerto VectorSearchResult
+        # score = 1 - distancia_coseno  (1.0 = idéntico, hacia -1.0 = opuesto)
         return [
             VectorSearchResult(
                 id=str(v.node_id),
-                score=1.0, # El ordenamiento es garantizado por la consulta de la DB (SQL operator <=> )
+                score=1.0 - float(dist),
                 payload={
                     "title": v.title,
                     "type": "note",
                     "metadata": v.metadata_json
                 }
-            ) for v in versions
+            ) for v, dist in rows
         ]
 
     async def delete(self, vector_id: str) -> None:

@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     # Configuración de Ollama y Modelos
     OLLAMA_URL: str = "http://localhost:11434"
     EMBEDDING_MODEL: str = "nomic-embed-text"
+    EMBEDDING_DIM: int = 768  # nomic-embed-text = 768. Debe coincidir con Vector(dim) en models.py
+    EMBEDDING_PROVIDER: str = "ollama"  # 'ollama' (real) | 'mock' (tests/dev sin Ollama)
 
     # Event Bus
     REDIS_URL: str = "redis://localhost:6379/0"
