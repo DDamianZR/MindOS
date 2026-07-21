@@ -11,11 +11,14 @@ from mindos_common.ids import new_id
 from mindos_common.logging import configure_logging, get_logger
 from mindos_schemas.api.v1.memory_dto import (
     GetNodeHistoryResponse,
+    GetNodeProvenanceResponse,
     IngestKnowledgeRequest,
     IngestKnowledgeResponse,
     NodeVersionDto,
     SearchKnowledgeResponse,
     SearchResultItem,
+    SourceDto,
+    VersionProvenanceDto,
 )
 from mindos_schemas.capabilities import Capability, RegisterCapabilitiesRequest
 from mindos_schemas.events.v1.memory_events import (
@@ -184,6 +187,24 @@ async def ingest_knowledge(
     parent_version_id = latest_ver["version_id"] if latest_ver else None
     version_id = new_id()
 
+    # Resolver el origen (provenance): reutilizar una fuente existente por (kind, uri) o crear una nueva.
+    provenance_source_id = None
+    if request.source is not None:
+        existing_source = None
+        if request.source.uri:
+            existing_source = await db_repo.find_source_by_kind_uri(request.source.kind.value, request.source.uri)
+        if existing_source:
+            provenance_source_id = existing_source["id"]
+        else:
+            provenance_source_id = new_id()
+            await db_repo.save_source(
+                source_id=provenance_source_id,
+                kind=request.source.kind.value,
+                uri=request.source.uri,
+                raw_ref=request.source.raw_ref,
+                metadata=request.source.metadata,
+            )
+
     await db_repo.save_node_version(
         node_id=node_id,
         version_id=version_id,
@@ -197,6 +218,7 @@ async def ingest_knowledge(
         importance=request.importance,
         status=request.status.value,
         evidence=[e.model_dump(mode="json") for e in request.evidence],
+        provenance_source_id=provenance_source_id,
     )
 
     # 2. Generar Embedding Vectorial y guardar en pgvector
@@ -318,5 +340,41 @@ async def get_node_history(
         object_type=latest.get("object_type", "note"),
         versions=versions_dto
     )
+
+@app.get("/api/v1/memory/node/{node_id}/provenance", response_model=GetNodeProvenanceResponse)
+async def get_node_provenance(
+    node_id: UUID,
+    repos=Depends(get_repositories)
+):
+    """
+    Trazabilidad de origen (F1-T2): "¿de dónde vino este conocimiento?".
+    Devuelve la cadena cronológica de versiones del nodo junto con la fuente (whatsapp, pdf,
+    cli, ...) de la que provino cada una, cuando se conoce.
+    """
+    db_repo, _ = repos
+
+    ver_list = await db_repo.get_node_versions(node_id)
+    if not ver_list:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Nodo {node_id} no encontrado en memoria."
+        )
+
+    chain = []
+    for v in ver_list:
+        source_dto = None
+        source_id = v.get("provenance_source_id")
+        if source_id:
+            src = await db_repo.get_source(source_id)
+            if src:
+                source_dto = SourceDto(
+                    id=src["id"], kind=src["kind"], uri=src["uri"],
+                    raw_ref=src["raw_ref"], captured_at=src["captured_at"], metadata=src["metadata"],
+                )
+        chain.append(VersionProvenanceDto(
+            version=v["version"], created_at=v["created_at"], author=v["author"], source=source_dto
+        ))
+
+    return GetNodeProvenanceResponse(node_id=node_id, chain=chain)
 
 # Fin del módulo main

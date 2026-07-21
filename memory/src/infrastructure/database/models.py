@@ -20,6 +20,21 @@ class DbCognitiveObject(Base):
     versions = relationship("DbObjectVersion", back_populates="node", cascade="all, delete-orphan")
 
 
+class DbSource(Base):
+    """
+    Fuente de origen de una captura (provenance) — F1-T2. Ej: un mensaje de WhatsApp, un PDF,
+    una página web, la CLI o un agente. Permite responder "¿de dónde vino este conocimiento?".
+    """
+    __tablename__ = "sources"
+
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    kind = Column(String(30), nullable=False)  # whatsapp|pdf|image|audio|web|cli|api|agent
+    uri = Column(String, nullable=True)
+    raw_ref = Column(String, nullable=True)
+    captured_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    metadata_json = Column("metadata", JSONB, default=dict, nullable=False)
+
+
 class DbObjectVersion(Base):
     """
     Snapshot de la versión inmutable de un Objeto Cognitivo (knowledge_node_versions).
@@ -47,7 +62,11 @@ class DbObjectVersion(Base):
     salience = Column(Float, nullable=False, default=0.5)  # recalculado por el agente de consolidación (Fase 5)
     tombstoned_at = Column(DateTime(timezone=True), nullable=True)  # soft-delete (F1-T4); nunca se borra físico
 
+    # --- Provenance (F1-T2) ---
+    source_id = Column(UUID(as_uuid=True), ForeignKey("sources.id"), nullable=True)
+
     node = relationship("DbCognitiveObject", back_populates="versions")
+    source = relationship("DbSource")
 
     __table_args__ = (
         UniqueConstraint("node_id", "version", name="uidx_node_version"),

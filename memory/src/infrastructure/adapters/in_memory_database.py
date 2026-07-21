@@ -16,6 +16,7 @@ class InMemoryDatabase(DatabasePort):
         self._versions: dict[UUID, list[dict[str, Any]]] = {}
         self._relations: list[dict[str, Any]] = []
         self._events: list[dict[str, Any]] = []
+        self._sources: dict[UUID, dict[str, Any]] = {}
 
     async def save_node(self, node_id: UUID, object_type: str) -> None:
         if node_id not in self._nodes:
@@ -39,6 +40,7 @@ class InMemoryDatabase(DatabasePort):
         importance: float = 0.5,
         status: str = "active",
         evidence: list[dict[str, Any]] | None = None,
+        provenance_source_id: UUID | None = None,
     ) -> None:
         if node_id not in self._versions:
             self._versions[node_id] = []
@@ -60,6 +62,7 @@ class InMemoryDatabase(DatabasePort):
             "evidence": evidence or [],
             "salience": 0.5,
             "tombstoned_at": None,
+            "provenance_source_id": provenance_source_id,
         }
         # Insertar y mantener orden por versión
         self._versions[node_id].append(version_data)
@@ -139,3 +142,24 @@ class InMemoryDatabase(DatabasePort):
             "payload": payload,
             "logged_at": datetime.now(timezone.utc)
         })
+
+    async def find_source_by_kind_uri(self, kind: str, uri: str) -> dict[str, Any] | None:
+        for src in self._sources.values():
+            if src["kind"] == kind and src["uri"] == uri:
+                return src
+        return None
+
+    async def save_source(
+        self, source_id: UUID, kind: str, uri: str | None, raw_ref: str | None, metadata: dict[str, Any]
+    ) -> None:
+        self._sources[source_id] = {
+            "id": source_id,
+            "kind": kind,
+            "uri": uri,
+            "raw_ref": raw_ref,
+            "captured_at": datetime.now(timezone.utc),
+            "metadata": metadata,
+        }
+
+    async def get_source(self, source_id: UUID) -> dict[str, Any] | None:
+        return self._sources.get(source_id)
