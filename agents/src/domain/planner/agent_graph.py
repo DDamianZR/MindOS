@@ -26,6 +26,8 @@ class AgentState(TypedDict):
     feedback: str | None
     error: str | None
     final_output: str | None
+    retries: int
+    max_retries: int
 
 
 class PlannerExecutorReviewerGraph:
@@ -136,12 +138,28 @@ class PlannerExecutorReviewerGraph:
                 }
             else:
                 logger.warning("Nodo [Review]: Paso RECHAZADO", step_id=step.step_id, feedback=review.feedback)
-                return {
-                    "feedback": f"El paso {step.step_id} fue rechazado. Corrección: {review.feedback}"
-                }
+                return self._retry_or_giveup(
+                    state, f"El paso {step.step_id} fue rechazado. Corrección: {review.feedback}"
+                )
         except Exception as e:
             logger.error("Error en nodo de revisión", error=str(e))
-            return {"feedback": f"Error evaluando el paso {step.step_id}: {str(e)}"}
+            return self._retry_or_giveup(state, f"Error evaluando el paso {step.step_id}: {str(e)}")
+
+    def _retry_or_giveup(self, state: AgentState, reason: str) -> dict[str, Any]:
+        """
+        Contabiliza un reintento y decide si replanificar o abortar de forma controlada.
+        Evita bucles infinitos replan<->execute cuando el Reviewer nunca aprueba.
+        """
+        retries = state.get("retries", 0) + 1
+        max_retries = state.get("max_retries", 3)
+        if retries >= max_retries:
+            msg = (
+                f"Se alcanzó el máximo de reintentos ({max_retries}) sin superar la revisión. "
+                f"Último motivo: {reason}"
+            )
+            logger.error("Nodo [Review]: máximo de reintentos alcanzado, abortando", retries=retries)
+            return {"retries": retries, "error": msg, "final_output": msg, "feedback": None}
+        return {"retries": retries, "feedback": reason}
 
     def _should_continue(self, state: AgentState) -> str:
         """Determina la siguiente ruta en base al estado de la revisión."""

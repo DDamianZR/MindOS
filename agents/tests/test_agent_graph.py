@@ -151,3 +151,34 @@ async def test_agent_graph_execution_replan_on_reject():
     assert result["current_step_idx"] == 1
     assert result["feedback"] is None
     assert result["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_agent_graph_stops_after_max_retries():
+    """F0-T8: un Reviewer que SIEMPRE rechaza debe terminar de forma controlada en <= max_retries,
+    sin colgarse ni exceder el límite de recursión."""
+    planner = DummyPlanner()
+    reviewer = DummyReviewer(approved=False, feedback="Nunca es suficiente")
+    executor = DummyExecutor()
+
+    graph_workflow = PlannerExecutorReviewerGraph(planner, executor, reviewer)
+    compiled_graph = graph_workflow.graph
+
+    cap = Capability(
+        name="search_knowledge", description="Búsqueda", parameters_schema={},
+        provider_service="memory", endpoint_path="/api"
+    )
+    initial_state = AgentState(
+        goal="Meta imposible de aprobar", context="Contexto base", plan_id=None, steps=[],
+        current_step_idx=0, available_capabilities=[cap], inputs={}, feedback=None,
+        error=None, final_output=None, retries=0, max_retries=3
+    )
+
+    result = await compiled_graph.ainvoke(initial_state)
+
+    # Terminó de forma controlada (no excepción de recursión) con error y final_output explicativos
+    assert result["retries"] == 3
+    assert result["error"] is not None
+    assert "máximo de reintentos" in result["final_output"]
+    # No debe haber replanificado más de max_retries veces
+    assert planner.call_count <= 3 + 1
