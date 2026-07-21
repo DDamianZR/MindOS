@@ -21,14 +21,14 @@ class PgDatabaseRepository(DatabasePort):
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def save_node(self, node_id: UUID, entity_type: str) -> None:
+    async def save_node(self, node_id: UUID, object_type: str) -> None:
         # Verificar si el nodo ya existe
         stmt = select(DbCognitiveObject).where(DbCognitiveObject.id == node_id)
         result = await self.session.execute(stmt)
         existing = result.scalar_one_or_none()
 
         if not existing:
-            new_node = DbCognitiveObject(id=node_id, entity_type=entity_type)
+            new_node = DbCognitiveObject(id=node_id, object_type=object_type)
             self.session.add(new_node)
             await self.session.flush()
 
@@ -41,7 +41,11 @@ class PgDatabaseRepository(DatabasePort):
         content: str,
         author: str,
         metadata: dict[str, Any],
-        parent_version_id: UUID | None = None
+        parent_version_id: UUID | None = None,
+        confidence: float = 0.5,
+        importance: float = 0.5,
+        status: str = "active",
+        evidence: list[dict[str, Any]] | None = None,
     ) -> None:
         new_version = DbObjectVersion(
             id=version_id,
@@ -51,55 +55,64 @@ class PgDatabaseRepository(DatabasePort):
             content=content,
             author=author,
             metadata_json=metadata,
-            parent_version_id=parent_version_id
+            parent_version_id=parent_version_id,
+            confidence=confidence,
+            importance=importance,
+            status=status,
+            evidence=evidence or [],
         )
         self.session.add(new_version)
         await self.session.flush()
 
-    async def get_latest_node_version(self, node_id: UUID) -> dict[str, Any] | None:
+    def _version_row_to_dict(self, ver: DbObjectVersion, object_type: str | None) -> dict[str, Any]:
+        return {
+            "node_id": ver.node_id,
+            "version_id": ver.id,
+            "version": ver.version,
+            "title": ver.title,
+            "content": ver.content,
+            "author": ver.author,
+            "metadata": ver.metadata_json,
+            "created_at": ver.created_at,
+            "parent_version_id": ver.parent_version_id,
+            "object_type": object_type,
+            "confidence": ver.confidence,
+            "importance": ver.importance,
+            "status": ver.status,
+            "evidence": ver.evidence,
+            "salience": ver.salience,
+            "tombstoned_at": ver.tombstoned_at,
+        }
+
+    async def get_latest_node_version(
+        self, node_id: UUID, include_archived: bool = False
+    ) -> dict[str, Any] | None:
         stmt = (
-            select(DbObjectVersion)
+            select(DbObjectVersion, DbCognitiveObject.object_type)
+            .join(DbCognitiveObject, DbObjectVersion.node_id == DbCognitiveObject.id)
             .where(DbObjectVersion.node_id == node_id)
-            .order_by(DbObjectVersion.version.desc())
-            .limit(1)
         )
+        if not include_archived:
+            stmt = stmt.where(DbObjectVersion.tombstoned_at.is_(None))
+        stmt = stmt.order_by(DbObjectVersion.version.desc()).limit(1)
+
         result = await self.session.execute(stmt)
-        ver = result.scalar_one_or_none()
-        if ver:
-            return {
-                "node_id": ver.node_id,
-                "version_id": ver.id,
-                "version": ver.version,
-                "title": ver.title,
-                "content": ver.content,
-                "author": ver.author,
-                "metadata": ver.metadata_json,
-                "created_at": ver.created_at,
-                "parent_version_id": ver.parent_version_id
-            }
+        row = result.first()
+        if row:
+            ver, object_type = row
+            return self._version_row_to_dict(ver, object_type)
         return None
 
     async def get_node_versions(self, node_id: UUID) -> list[dict[str, Any]]:
         stmt = (
-            select(DbObjectVersion)
+            select(DbObjectVersion, DbCognitiveObject.object_type)
+            .join(DbCognitiveObject, DbObjectVersion.node_id == DbCognitiveObject.id)
             .where(DbObjectVersion.node_id == node_id)
             .order_by(DbObjectVersion.version.asc())
         )
         result = await self.session.execute(stmt)
-        versions = result.scalars().all()
-        return [
-            {
-                "node_id": v.node_id,
-                "version_id": v.id,
-                "version": v.version,
-                "title": v.title,
-                "content": v.content,
-                "author": v.author,
-                "metadata": v.metadata_json,
-                "created_at": v.created_at,
-                "parent_version_id": v.parent_version_id
-            } for v in versions
-        ]
+        rows = result.all()
+        return [self._version_row_to_dict(v, object_type) for v, object_type in rows]
 
     async def save_relation(
         self,

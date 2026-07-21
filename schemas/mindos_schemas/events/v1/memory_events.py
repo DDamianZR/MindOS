@@ -3,13 +3,15 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from mindos_schemas.domain import ObjectType
+
 
 class KnowledgeCreatedEventData(BaseModel):
     """
     Payload de datos para el evento com.mindos.memory.knowledge.created
     """
     node_id: UUID = Field(..., description="ID único (UUIDv7) del nodo de conocimiento")
-    entity_type: str = Field(..., description="Tipo de entidad (concept, person, project, document, technology)")
+    object_type: ObjectType = Field(..., description="Tipo de Objeto Cognitivo (note, idea, hypothesis, ...)")
     version: int = Field(default=1, description="Número de versión inicial (1)")
     title: str = Field(..., description="Título de la nota o entidad")
     author: str = Field(..., description="Identificador del autor (usuario o agente)")

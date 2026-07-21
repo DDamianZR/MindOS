@@ -174,7 +174,7 @@ async def ingest_knowledge(
     node_id = request.node_id or new_id()
 
     # 1. Guardar en Base de Datos Relacional
-    await db_repo.save_node(node_id, request.entity_type)
+    await db_repo.save_node(node_id, request.object_type.value)
 
     # Obtener última versión para calcular el número de la siguiente versión
     latest_ver = await db_repo.get_latest_node_version(node_id)
@@ -192,7 +192,11 @@ async def ingest_knowledge(
         content=request.content,
         author=request.author,
         metadata=request.metadata,
-        parent_version_id=parent_version_id
+        parent_version_id=parent_version_id,
+        confidence=request.confidence,
+        importance=request.importance,
+        status=request.status.value,
+        evidence=[e.model_dump(mode="json") for e in request.evidence],
     )
 
     # 2. Generar Embedding Vectorial y guardar en pgvector
@@ -200,14 +204,14 @@ async def ingest_knowledge(
     await vector_repo.upsert(
         vector_id=str(node_id),
         embedding=vector,
-        payload={"title": request.title, "type": request.entity_type}
+        payload={"title": request.title, "type": request.object_type.value}
     )
 
     # 3. Construir el evento de dominio (created si es v1, updated en adelante)
     if next_version == 1:
         event_type = "com.mindos.memory.knowledge.created"
         event_data = KnowledgeCreatedEventData(
-            node_id=node_id, entity_type=request.entity_type,
+            node_id=node_id, object_type=request.object_type,
             version=next_version, title=request.title, author=request.author,
         )
     else:
@@ -236,7 +240,11 @@ async def ingest_knowledge(
         version=next_version,
         title=request.title,
         author=request.author,
-        created_at=created_at
+        created_at=created_at,
+        object_type=request.object_type,
+        confidence=request.confidence,
+        importance=request.importance,
+        status=request.status,
     )
 
 @app.post("/api/v1/memory/search", response_model=SearchKnowledgeResponse)
@@ -252,7 +260,6 @@ async def search_knowledge(
 
     results = []
     for res in vector_results:
-        from uuid import UUID
         nid = UUID(res.id)
         ver = await db_repo.get_latest_node_version(nid)
         if ver:
@@ -262,7 +269,11 @@ async def search_knowledge(
                 title=ver["title"],
                 content=ver["content"],
                 score=res.score,
-                metadata=ver["metadata"]
+                metadata=ver["metadata"],
+                object_type=ver.get("object_type"),
+                confidence=ver.get("confidence", 0.5),
+                importance=ver.get("importance", 0.5),
+                status=ver.get("status", "active"),
             ))
 
     return SearchKnowledgeResponse(query=query, results=results)
@@ -289,16 +300,22 @@ async def get_node_history(
             content=v["content"],
             author=v["author"],
             created_at=v["created_at"],
-            parent_version_id=v["parent_version_id"]
+            parent_version_id=v["parent_version_id"],
+            confidence=v.get("confidence", 0.5),
+            importance=v.get("importance", 0.5),
+            status=v.get("status", "active"),
+            evidence=v.get("evidence") or [],
+            salience=v.get("salience", 0.5),
+            tombstoned_at=v.get("tombstoned_at"),
         ) for v in ver_list
     ]
 
-    # Encontrar el tipo en la primera versión
+    # El tipo de objeto vive en el nodo padre; toda versión lo trae anexado por el repositorio.
     latest = ver_list[-1]
 
     return GetNodeHistoryResponse(
         node_id=node_id,
-        entity_type=latest["metadata"].get("type", "note"),
+        object_type=latest.get("object_type", "note"),
         versions=versions_dto
     )
 

@@ -17,11 +17,11 @@ class InMemoryDatabase(DatabasePort):
         self._relations: list[dict[str, Any]] = []
         self._events: list[dict[str, Any]] = []
 
-    async def save_node(self, node_id: UUID, entity_type: str) -> None:
+    async def save_node(self, node_id: UUID, object_type: str) -> None:
         if node_id not in self._nodes:
             self._nodes[node_id] = {
                 "id": node_id,
-                "entity_type": entity_type,
+                "object_type": object_type,
                 "created_at": datetime.now(timezone.utc)
             }
 
@@ -34,7 +34,11 @@ class InMemoryDatabase(DatabasePort):
         content: str,
         author: str,
         metadata: dict[str, Any],
-        parent_version_id: UUID | None = None
+        parent_version_id: UUID | None = None,
+        confidence: float = 0.5,
+        importance: float = 0.5,
+        status: str = "active",
+        evidence: list[dict[str, Any]] | None = None,
     ) -> None:
         if node_id not in self._versions:
             self._versions[node_id] = []
@@ -48,16 +52,27 @@ class InMemoryDatabase(DatabasePort):
             "author": author,
             "metadata": metadata,
             "created_at": datetime.now(timezone.utc),
-            "parent_version_id": parent_version_id
+            "parent_version_id": parent_version_id,
+            "object_type": self._nodes.get(node_id, {}).get("object_type"),
+            "confidence": confidence,
+            "importance": importance,
+            "status": status,
+            "evidence": evidence or [],
+            "salience": 0.5,
+            "tombstoned_at": None,
         }
         # Insertar y mantener orden por versión
         self._versions[node_id].append(version_data)
         self._versions[node_id].sort(key=lambda x: x["version"])
 
-    async def get_latest_node_version(self, node_id: UUID) -> dict[str, Any] | None:
+    async def get_latest_node_version(
+        self, node_id: UUID, include_archived: bool = False
+    ) -> dict[str, Any] | None:
         versions = self._versions.get(node_id, [])
+        if not include_archived:
+            versions = [v for v in versions if v.get("tombstoned_at") is None]
         if versions:
-            return versions[-1] # La última
+            return versions[-1]  # La última activa
         return None
 
     async def get_node_versions(self, node_id: UUID) -> list[dict[str, Any]]:

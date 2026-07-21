@@ -1,5 +1,5 @@
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -14,7 +14,7 @@ class DbCognitiveObject(Base):
     __tablename__ = "knowledge_nodes"
 
     id = Column(UUID(as_uuid=True), primary_key=True)
-    entity_type = Column(String(50), nullable=False)
+    object_type = Column(String(50), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     versions = relationship("DbObjectVersion", back_populates="node", cascade="all, delete-orphan")
@@ -23,7 +23,8 @@ class DbCognitiveObject(Base):
 class DbObjectVersion(Base):
     """
     Snapshot de la versión inmutable de un Objeto Cognitivo (knowledge_node_versions).
-    Contiene el texto, los metadatos y el embedding vectorial (pgvector) de esta versión.
+    Contiene el texto, los metadatos, el embedding vectorial (pgvector) y los atributos
+    cognitivos ricos (confianza, importancia, estado, evidencia) de esta versión.
     """
     __tablename__ = "knowledge_node_versions"
 
@@ -37,6 +38,14 @@ class DbObjectVersion(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     author = Column(String(100), nullable=False)
     parent_version_id = Column(UUID(as_uuid=True), ForeignKey("knowledge_node_versions.id"), nullable=True)
+
+    # --- Atributos cognitivos ricos (F1-T1) ---
+    confidence = Column(Float, nullable=False, default=0.5)
+    importance = Column(Float, nullable=False, default=0.5)
+    status = Column(String(20), nullable=False, default="active")
+    evidence = Column(JSONB, default=list, nullable=False)  # [{node_id|url|quote, weight}]
+    salience = Column(Float, nullable=False, default=0.5)  # recalculado por el agente de consolidación (Fase 5)
+    tombstoned_at = Column(DateTime(timezone=True), nullable=True)  # soft-delete (F1-T4); nunca se borra físico
 
     node = relationship("DbCognitiveObject", back_populates="versions")
 
