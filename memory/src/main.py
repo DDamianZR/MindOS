@@ -11,10 +11,14 @@ from mindos_common.ids import new_id
 from mindos_common.logging import configure_logging, get_logger
 from mindos_schemas.api.v1.memory_dto import (
     ArchiveNodeResponse,
+    CreateRelationRequest,
+    CreateRelationResponse,
     GetNodeHistoryResponse,
+    GetNodeNeighborsResponse,
     GetNodeProvenanceResponse,
     IngestKnowledgeRequest,
     IngestKnowledgeResponse,
+    NeighborEdgeDto,
     NodeVersionDto,
     SearchKnowledgeResponse,
     SearchResultItem,
@@ -522,5 +526,72 @@ async def time_travel(
     )
 
     return TimeTravelResponse(node_id=node_id, at=at, found=True, version=version_dto, relations=relation_dtos)
+
+
+def _normalize_relation_type(relation_type: str, metadata: dict) -> tuple[str, dict, str | None]:
+    """
+    F1-T6: valida `relation_type` contra el catálogo `RelationType`. Si no pertenece, se
+    normaliza a `CUSTOM` y el valor original se preserva en metadata — el grafo sigue siendo
+    consultable/agrupable por un conjunto cerrado de tipos, sin bloquear etiquetas ad-hoc.
+    Devuelve (relation_type_normalizado, metadata_resultante, custom_relation_type_o_None).
+    """
+    valid_values = {rt.value for rt in RelationType}
+    if relation_type in valid_values:
+        return relation_type, metadata, None
+    normalized_metadata = {**metadata, "custom_relation_type": relation_type}
+    return RelationType.CUSTOM.value, normalized_metadata, relation_type
+
+
+@app.post("/api/v1/memory/relation", response_model=CreateRelationResponse)
+async def create_relation(
+    request: CreateRelationRequest,
+    repos=Depends(get_repositories),
+    x_correlation_id: UUID | None = Header(default=None, alias="X-Correlation-Id")
+):
+    """Crea una relación tipada entre dos Objetos Cognitivos del Knowledge Graph (F1-T6)."""
+    db_repo, _ = repos
+    correlation_id = x_correlation_id or new_id()
+    set_correlation_id(correlation_id)
+
+    relation_type, metadata, custom_type = _normalize_relation_type(request.relation_type, request.metadata)
+
+    await db_repo.save_relation(
+        source_id=request.source_id, target_id=request.target_id,
+        relation_type=relation_type, metadata=metadata,
+    )
+
+    event_data = RelationCreatedEventData(
+        source_id=request.source_id, target_id=request.target_id,
+        relation_type=relation_type, metadata=metadata,
+    )
+    await db_repo.save_event_log(new_id(), "com.mindos.memory.relation.created", event_data.model_dump(mode="json"))
+
+    if settings.DATABASE_TYPE == "postgres":
+        await db_repo.session.commit()
+
+    await publish_event("com.mindos.memory.relation.created", event_data, correlation_id)
+
+    return CreateRelationResponse(
+        source_id=request.source_id, target_id=request.target_id,
+        relation_type=relation_type, custom_relation_type=custom_type,
+    )
+
+
+@app.get("/api/v1/memory/node/{node_id}/neighbors", response_model=GetNodeNeighborsResponse)
+async def get_node_neighbors(
+    node_id: UUID,
+    depth: int = 2,
+    repos=Depends(get_repositories)
+):
+    """Vecinos del Knowledge Graph alcanzables desde el nodo, hasta `depth` saltos (F1-T6)."""
+    db_repo, _ = repos
+    relations = await db_repo.query_relations_recursive(node_id, max_depth=depth)
+    neighbors = [
+        NeighborEdgeDto(
+            source_id=r["source_id"], target_id=r["target_id"],
+            relation_type=r["relation_type"], metadata=r.get("metadata") or {},
+        ) for r in relations
+    ]
+    return GetNodeNeighborsResponse(node_id=node_id, depth=depth, neighbors=neighbors)
 
 # Fin del módulo main

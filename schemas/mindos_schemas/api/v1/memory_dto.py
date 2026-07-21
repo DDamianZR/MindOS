@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from mindos_schemas.domain import ObjectStatus, ObjectType, SourceKind
+from mindos_schemas.domain import ObjectStatus, ObjectType, RelationType, SourceKind
 
 
 class SourceInput(BaseModel):
@@ -211,3 +211,46 @@ class ArchiveNodeResponse(BaseModel):
     """
     node_id: UUID = Field(..., description="ID del nodo de conocimiento")
     archived: bool = Field(..., description="Estado resultante: True si quedó archivado, False si activo")
+
+
+class CreateRelationRequest(BaseModel):
+    """
+    DTO para crear una relación tipada entre dos Objetos Cognitivos (F1-T6).
+    Si `relation_type` no pertenece al catálogo `RelationType`, se normaliza a `CUSTOM` y el
+    valor original se preserva en `metadata.custom_relation_type` (el grafo sigue siendo
+    consultable/agrupable por un conjunto cerrado de tipos, sin bloquear etiquetas ad-hoc).
+    """
+    source_id: UUID = Field(..., description="Nodo de origen de la relación")
+    target_id: UUID = Field(..., description="Nodo de destino de la relación")
+    relation_type: str = Field(
+        ..., description="Tipo de relación (ver catálogo RelationType; libre, se normaliza si no calza)"
+    )
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Metadatos de la relación")
+
+
+class CreateRelationResponse(BaseModel):
+    """Respuesta de crear una relación (F1-T6)."""
+    source_id: UUID = Field(..., description="Nodo de origen de la relación")
+    target_id: UUID = Field(..., description="Nodo de destino de la relación")
+    relation_type: RelationType = Field(..., description="Tipo de relación persistido (del catálogo)")
+    custom_relation_type: str | None = Field(
+        default=None, description="Valor original si `relation_type` no pertenecía al catálogo"
+    )
+
+
+class NeighborEdgeDto(BaseModel):
+    """Una arista del Knowledge Graph, tal como aparece en `/neighbors` (F1-T6)."""
+    source_id: UUID = Field(..., description="Nodo de origen de la relación")
+    target_id: UUID = Field(..., description="Nodo de destino de la relación")
+    relation_type: str = Field(..., description="Tipo de relación")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Metadatos de la relación")
+
+
+class GetNodeNeighborsResponse(BaseModel):
+    """
+    Respuesta de `/node/{id}/neighbors` (F1-T6): las aristas activas del Knowledge Graph
+    alcanzables desde el nodo hasta la profundidad pedida.
+    """
+    node_id: UUID = Field(..., description="ID del nodo de conocimiento consultado")
+    depth: int = Field(..., description="Profundidad de la caminata del grafo")
+    neighbors: list[NeighborEdgeDto] = Field(..., description="Aristas encontradas")
