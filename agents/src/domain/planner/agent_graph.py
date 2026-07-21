@@ -54,7 +54,17 @@ class PlannerExecutorReviewerGraph:
 
         # 3. Definir las transiciones (edges)
         workflow.add_edge("plan_step", "execute_step")
-        workflow.add_edge("execute_step", "review_step")
+
+        # Enlace condicional tras la ejecución (F1-T8): si el paso quedó pendiente de
+        # aprobación humana, el grafo se detiene aquí en vez de pasar a revisión.
+        workflow.add_conditional_edges(
+            "execute_step",
+            self._after_execute,
+            {
+                "review": "review_step",
+                "end": END
+            }
+        )
 
         # Enlace condicional desde el Reviewer
         workflow.add_conditional_edges(
@@ -103,14 +113,36 @@ class PlannerExecutorReviewerGraph:
         step.status = "running"
         try:
             # Despachar ejecución al Executor
-            output = await self.executor.execute_step(step, state["inputs"])
-            step.actual_output = output
-            step.status = "completed"
+            result = await self.executor.execute_step(step, state["inputs"])
+            step.actual_output = result.output
+            step.status = result.status
+
+            if result.status == "pending_approval":
+                logger.warning(
+                    "Nodo [Execute]: paso en espera de aprobación humana, deteniendo el grafo",
+                    step_id=step.step_id
+                )
+                return {
+                    "steps": state["steps"],
+                    "final_output": (
+                        f"Ejecución pausada: el paso {step.step_id} requiere aprobación humana "
+                        f"antes de continuar. {result.output}"
+                    ),
+                }
             return {"steps": state["steps"]}
         except Exception as e:
             step.status = "failed"
             logger.error("Error en nodo de ejecución", step_id=step.step_id, error=str(e))
             return {"error": f"Fallo al ejecutar paso {step.step_id}: {str(e)}", "steps": state["steps"]}
+
+    def _after_execute(self, state: AgentState) -> str:
+        """F1-T8: si el paso recién ejecutado quedó pendiente de aprobación, detiene el grafo
+        en vez de pasar a revisión (no hay nada que revisar todavía)."""
+        idx = state["current_step_idx"]
+        step = state["steps"][idx]
+        if step.status == "pending_approval":
+            return "end"
+        return "review"
 
     async def _review_node(self, state: AgentState) -> dict[str, Any]:
         """Nodo de Revisión: Evalúa el output del paso actual."""

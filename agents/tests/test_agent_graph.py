@@ -4,7 +4,7 @@ import pytest
 from mindos_schemas.api.v1.agent_dto import GeneratePlanResponse, PlanStep, ReviewStepResponse
 from mindos_schemas.capabilities import Capability
 
-from agents.src.domain.executor.executor import Executor
+from agents.src.domain.executor.executor import ExecutionResult, Executor
 from agents.src.domain.planner.agent_graph import AgentState, PlannerExecutorReviewerGraph
 from agents.src.domain.planner.planner import Planner
 from agents.src.domain.planner.reviewer import Reviewer
@@ -46,7 +46,7 @@ class DummyReviewer(Reviewer):
 # Mock del Executor
 class DummyExecutor(Executor):
     async def execute_step(self, step, inputs):
-        return "Resultado de ejecución del executor"
+        return ExecutionResult(output="Resultado de ejecución del executor", status="completed")
 
 
 @pytest.mark.asyncio
@@ -182,3 +182,44 @@ async def test_agent_graph_stops_after_max_retries():
     assert "máximo de reintentos" in result["final_output"]
     # No debe haber replanificado más de max_retries veces
     assert planner.call_count <= 3 + 1
+
+
+class NeverCalledReviewer(Reviewer):
+    """Falla si se invoca: no debe haber nada que revisar cuando el paso está pending_approval."""
+    async def review_step(self, task, expected_output, actual_output):
+        raise AssertionError("El Reviewer no debe invocarse cuando el paso queda pending_approval")
+
+
+class PendingApprovalExecutor(Executor):
+    async def execute_step(self, step, inputs):
+        return ExecutionResult(output="Requiere aprobación humana", status="pending_approval")
+
+
+@pytest.mark.asyncio
+async def test_agent_graph_stops_at_pending_approval_without_reviewing():
+    """F1-T8: cuando el Executor devuelve pending_approval, el grafo se detiene de inmediato
+    sin llamar al Reviewer (no hay nada que revisar todavía) ni avanzar de paso."""
+    planner = DummyPlanner()
+    reviewer = NeverCalledReviewer()
+    executor = PendingApprovalExecutor()
+
+    graph_workflow = PlannerExecutorReviewerGraph(planner, executor, reviewer)
+    compiled_graph = graph_workflow.graph
+
+    cap = Capability(
+        name="search_knowledge", description="Búsqueda", parameters_schema={},
+        provider_service="memory", endpoint_path="/api", requires_approval=True,
+    )
+    initial_state = AgentState(
+        goal="Acción sensible", context="Contexto base", plan_id=None, steps=[],
+        current_step_idx=0, available_capabilities=[cap], inputs={}, feedback=None,
+        error=None, final_output=None, retries=0, max_retries=3
+    )
+
+    result = await compiled_graph.ainvoke(initial_state)
+
+    assert result["steps"][0].status == "pending_approval"
+    assert result["current_step_idx"] == 0, "no debe avanzar de paso sin revisión/aprobación"
+    assert result["final_output"] is not None
+    assert "aprobación" in result["final_output"].lower()
+    assert result["error"] is None
