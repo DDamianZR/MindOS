@@ -163,3 +163,25 @@ class GetNodeProvenanceResponse(BaseModel):
     """
     node_id: UUID = Field(..., description="ID del nodo de conocimiento")
     chain: list[VersionProvenanceDto] = Field(..., description="Cadena cronológica de versiones + su fuente")
+
+
+class TimeTravelRelationDto(BaseModel):
+    """Una relación vigente en el instante consultado (F1-T3)."""
+    source_id: UUID = Field(..., description="Nodo de origen de la relación")
+    target_id: UUID = Field(..., description="Nodo de destino de la relación")
+    relation_type: str = Field(..., description="Tipo de relación")
+
+
+class TimeTravelResponse(BaseModel):
+    """
+    Respuesta de la consulta temporal "as-of" (F1-T3): reconstruye el estado del nodo
+    (versión vigente + relaciones vigentes) tal como era en el instante `at`, sin importar
+    el estado actual (incluye versiones hoy archivadas, si en ese momento estaban activas).
+    """
+    node_id: UUID = Field(..., description="ID del nodo de conocimiento")
+    at: datetime = Field(..., description="Instante consultado")
+    found: bool = Field(..., description="Si existía alguna versión del nodo en ese instante")
+    version: NodeVersionDto | None = Field(default=None, description="Versión vigente en `at`, si existía")
+    relations: list[TimeTravelRelationDto] = Field(
+        default_factory=list, description="Relaciones vigentes en `at`"
+    )

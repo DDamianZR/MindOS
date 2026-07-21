@@ -37,9 +37,13 @@ class DummyDatabase(DatabasePort):
     async def get_source(self, source_id): return None
     async def get_node_versions(self, node_id):
         return [self.node_versions.get(node_id)] if node_id in self.node_versions else []
+    async def get_node_version_asof(self, node_id, at):
+        return self.node_versions.get(node_id)
     async def save_relation(self, source_id, target_id, relation_type, metadata): pass
     async def delete_relation(self, source_id, target_id, relation_type): pass
     async def query_relations_recursive(self, start_node_id, max_depth):
+        return [r for r in self.relations if r["source_id"] == start_node_id]
+    async def query_relations_asof(self, start_node_id, at, max_depth):
         return [r for r in self.relations if r["source_id"] == start_node_id]
     async def save_event_log(self, event_id, event_type, payload): pass
 

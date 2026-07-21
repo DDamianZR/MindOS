@@ -81,6 +81,12 @@ class InMemoryDatabase(DatabasePort):
     async def get_node_versions(self, node_id: UUID) -> list[dict[str, Any]]:
         return self._versions.get(node_id, [])
 
+    async def get_node_version_asof(self, node_id: UUID, at: datetime) -> dict[str, Any] | None:
+        candidates = [v for v in self._versions.get(node_id, []) if v["created_at"] <= at]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda v: v["created_at"])
+
     async def save_relation(
         self,
         source_id: UUID,
@@ -129,6 +135,29 @@ class InMemoryDatabase(DatabasePort):
             # Buscar relaciones salientes activas
             for rel in self._relations:
                 if rel["source_id"] == node_id and rel["valid_to"] is None:
+                    results.append(rel)
+                    traverse(rel["target_id"], current_depth + 1)
+
+        traverse(start_node_id, 1)
+        return results
+
+    async def query_relations_asof(
+        self, start_node_id: UUID, at: datetime, max_depth: int
+    ) -> list[dict[str, Any]]:
+        visited = set()
+        results = []
+
+        def is_active_at(rel: dict[str, Any]) -> bool:
+            return rel["valid_from"] <= at and (rel["valid_to"] is None or rel["valid_to"] > at)
+
+        def traverse(node_id: UUID, current_depth: int):
+            if current_depth > max_depth or node_id in visited:
+                return
+
+            visited.add(node_id)
+
+            for rel in self._relations:
+                if rel["source_id"] == node_id and is_active_at(rel):
                     results.append(rel)
                     traverse(rel["target_id"], current_depth + 1)
 
