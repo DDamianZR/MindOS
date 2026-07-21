@@ -1,6 +1,11 @@
-# Stack de desarrollo/local de MindOS. Contexto de build = raíz del monorepo (..).
+# Stack de producción de MindOS. Contexto de build = raíz del monorepo (..).
 # Copia .env.example a .env (en la raíz) antes de levantar.
 # Ollama se usa desde el HOST (host.docker.internal). Modelos: qwen3:8b + nomic-embed-text.
+#
+# F3-T2: Traefik es el ÚNICO servicio expuesto al host (80/443). Todo lo demás (Postgres,
+# Redis, Memory, Agents, Gateway) vive solo en la red interna `mindos-net` — se alcanzan por
+# nombre de servicio entre contenedores, nunca desde fuera del host. Para depurar directo
+# (psql/redis-cli) usa `docker compose exec <servicio> ...` en vez de un puerto de host.
 
 name: mindos
 
@@ -12,8 +17,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-mindos_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mindos_secure_password}
       POSTGRES_DB: ${POSTGRES_DB:-mindos_db}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -29,8 +32,6 @@ services:
     image: redis:7-alpine
     container_name: mindos-redis
     command: redis-server --appendonly yes
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -71,8 +72,6 @@ services:
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-ollama}
-    ports:
-      - "8001:8001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,8 +96,6 @@ services:
       REDIS_URL: redis://redis:6379/0
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${LLM_MODEL_REASONING:-qwen3:8b}
-    ports:
-      - "8002:8002"
     depends_on:
       memory:
         condition: service_healthy
@@ -128,8 +125,6 @@ services:
       MINDOS_API_KEY: ${MINDOS_API_KEY:?La variable MINDOS_API_KEY es obligatoria (ver .env.example)}
       MINDOS_ADMIN_USERNAME: ${MINDOS_ADMIN_USERNAME:-admin}
       MINDOS_ADMIN_PASSWORD_HASH: ${MINDOS_ADMIN_PASSWORD_HASH:?Genera un hash con scripts/hash_password.py}
-    ports:
-      - "8000:8000"
     depends_on:
       memory:
         condition: service_healthy
@@ -140,11 +135,58 @@ services:
     restart: unless-stopped
     mem_limit: 256m
     networks: [mindos-net]
+    labels:
+      - "traefik.enable=true"
+      # Sin Host() explícito: el Gateway es el único servicio ruteado, y esto sirve tanto
+      # acceso por IP/LAN (sin dominio) como por dominio real, sin duplicar routers.
+      - "traefik.http.routers.gateway.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.gateway.entrypoints=websecure"
+      - "traefik.http.routers.gateway.tls=true"
+      # Sin MINDOS_ACME_EMAIL o sin DNS público apuntando al host, el challenge ACME
+      # simplemente no puede completarse (Let's Encrypt no puede alcanzar el host) y Traefik
+      # sirve su certificado autofirmado por defecto — TLS sigue activo, solo sin CA pública.
+      - "traefik.http.routers.gateway.tls.certresolver=letsencrypt"
+      - "traefik.http.services.gateway.loadbalancer.server.port=8000"
+
+  # F3-T2: único servicio expuesto al host. Con MINDOS_ACME_EMAIL configurado en .env Y el
+  # puerto 80 alcanzable desde internet (dominio real con DNS apuntando aquí), Traefik emite
+  # un certificado Let's Encrypt real; si no, sirve su autofirmado por defecto (LAN sin dominio).
+  traefik:
+    image: traefik:v3.1
+    container_name: mindos-traefik
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=mindos-net"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${MINDOS_ACME_EMAIL:-}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--api.dashboard=false"
+      - "--log.level=${TRAEFIK_LOG_LEVEL:-INFO}"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_certs:/letsencrypt
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 128m
+    networks: [mindos-net]
 
 volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  traefik_certs:
     driver: local
 
 networks:
