@@ -262,6 +262,10 @@ curl -sX POST localhost:8001/api/v1/memory/ingest -H 'content-type: application/
 curl -sX POST "localhost:8001/api/v1/memory/search?query=puerto%20traefik&limit=3"
 ```
 Marca aquí cuando esté hecho:
-- [ ] F0-T1 monorepo · [ ] F0-T2 uuid7 · [ ] F0-T3 lineaje · [ ] F0-T4 Alembic/pgvector
-- [ ] F0-T5 embeddings reales · [ ] F0-T6 eventos · [ ] F0-T7 score · [ ] F0-T8 retries
-- [ ] F0-T9 Docker · [ ] F0-T10 CI
+- [x] F0-T1 monorepo · [x] F0-T2 uuid7 · [x] F0-T3 lineaje · [x] F0-T4 Alembic/pgvector (offline; falta verificación online)
+- [x] F0-T5 embeddings reales · [x] F0-T6 eventos · [x] F0-T7 score · [x] F0-T8 retries
+- [x] F0-T9 Docker (artefactos; falta `docker compose up` real) · [x] F0-T10 CI
+
+> **Pendiente de verificación con Docker/Postgres** (ver `plan/NOTAS.md`): aplicar `alembic upgrade head`
+> online, `docker compose up` completo y el smoke-test de ingesta con `DATABASE_TYPE=postgres`.
+> Todo el resto está implementado y verificado (ruff + 8 tests verdes + embedding real 768d en vivo).
