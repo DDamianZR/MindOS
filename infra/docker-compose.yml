@@ -122,6 +122,26 @@ services:
     mem_limit: 256m
     networks: [mindos-net]
 
+  # F3-T4: adaptador de WhatsApp (Baileys). Nunca se expone al host — conecta HACIA WhatsApp
+  # (saliente) y HACIA comms (interno); nadie necesita llamarlo desde fuera del stack.
+  whatsapp:
+    build:
+      context: ../whatsapp
+      dockerfile: Dockerfile
+    container_name: mindos-whatsapp
+    environment:
+      COMMS_URL: http://comms:8003
+      PORT: "8004"
+      WHATSAPP_AUTH_DIR: /app/auth_state
+    volumes:
+      - whatsapp_auth:/app/auth_state
+    depends_on:
+      comms:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 384m
+    networks: [mindos-net]
+
   gateway:
     build:
       context: ..
@@ -204,6 +224,8 @@ volumes:
   redis_data:
     driver: local
   traefik_certs:
+    driver: local
+  whatsapp_auth:
     driver: local
 
 networks:
