@@ -130,7 +130,9 @@ async def execute_agent_goal(
         inputs={"query": goal},
         feedback=None,
         error=None,
-        final_output=None
+        final_output=None,
+        retries=0,
+        max_retries=3
     )
 
     try:
