@@ -124,15 +124,21 @@ Regla de oro: **nada accede a la infraestructura directamente**; todo pasa por e
 
 ## 4. Índice de fases y dependencias
 
-| Fase | Archivo | Entrega | Depende de |
+> **▶ Para EJECUTAR, empieza por [`07-runway-a-produccion.md`](07-runway-a-produccion.md):** es la
+> secuencia maestra ordenada (stages + puertas de despliegue + protocolo de ejecución) que lleva de
+> aquí a producción. Los archivos de fase de abajo tienen el detalle de cada tarea; el runway tiene
+> el orden y los gates.
+
+| Fase | Archivo | Entrega | Estado / Depende de |
 |---|---|---|---|
-| **0 · Fundaciones** | [`00-fundaciones.md`](00-fundaciones.md) | Kernel correcto, persistente, event-driven, arrancable con Docker. | — |
-| **1 · Knowledge Core** | [`01-knowledge-core.md`](01-knowledge-core.md) | Modelo cognitivo rico, consulta temporal, GraphRAG, executor real. | 0 |
-| **2 · Thinking Graph** | [`02-thinking-graph.md`](02-thinking-graph.md) | Explicabilidad, trazas de razonamiento, Cognitive Query API, contradicciones. | 1 |
-| **3 · Gateway + Comunicación** | [`03-gateway-comunicacion.md`](03-gateway-comunicacion.md) | Entrada única + auth; captura WhatsApp/CLI/email; pipeline de ingestión. | 1 |
-| **4 · Interfaces** | [`04-interfaces.md`](04-interfaces.md) | Dashboard (grafo/timeline/trazas), servidor MCP, PWA de captura. | 2, 3 |
-| **5 · Automatización** | [`05-automatizacion.md`](05-automatizacion.md) | Reflexión/consolidación, resurfacing, investigación, lifecycle. | 2 |
-| **6 · Producción y despliegue** | [`06-produccion-despliegue.md`](06-produccion-despliegue.md) | Hardening, Docker stack completo, deploy al server, backups, observabilidad, CI/CD. | 0-5 (se aplica de forma incremental) |
+| **0 · Fundaciones** | [`00-fundaciones.md`](00-fundaciones.md) | Kernel correcto, persistente, event-driven, arrancable con Docker. | ✅ código hecho (falta verificación online) |
+| **1 · Knowledge Core** | [`01-knowledge-core.md`](01-knowledge-core.md) | Modelo cognitivo rico, consulta temporal, GraphRAG, executor real. | ⏳ depende de 0 |
+| **2 · Thinking Graph** | [`02-thinking-graph.md`](02-thinking-graph.md) | Explicabilidad, trazas de razonamiento, Cognitive Query API, contradicciones. | ⏳ depende de 1 |
+| **3 · Gateway + Comunicación** | [`03-gateway-comunicacion.md`](03-gateway-comunicacion.md) | Entrada única + auth; captura WhatsApp/CLI/email; pipeline de ingestión. | ⏳ depende de 1 |
+| **4 · Interfaces** | [`04-interfaces.md`](04-interfaces.md) | Dashboard (grafo/timeline/trazas), servidor MCP, PWA de captura. | ⏳ depende de 2, 3 |
+| **5 · Automatización** | [`05-automatizacion.md`](05-automatizacion.md) | Reflexión/consolidación, resurfacing, investigación, lifecycle. | ⏳ depende de 2 |
+| **6 · Producción y despliegue** | [`06-produccion-despliegue.md`](06-produccion-despliegue.md) | Hardening, Docker stack completo, deploy al server, backups, observabilidad, CI/CD. | ⏳ incremental (0→5) |
+| **▶ Runway de ejecución** | [`07-runway-a-produccion.md`](07-runway-a-produccion.md) | Secuencia maestra: stages + puertas de despliegue + protocolo de ejecución. | **empieza aquí** |
 
 > **Nivel de detalle:** las fases 0-2 están a nivel de tarea atómica (near-term, máxima precisión).
 > Las fases 3-5 están a nivel de épica + tareas clave + DoD (dependen de resultados previos; se
