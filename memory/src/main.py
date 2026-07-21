@@ -42,10 +42,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from memory.src.application.services.context_builder import ContextBuilderService
 from memory.src.config import settings
 from memory.src.infrastructure.adapters.in_memory_database import InMemoryDatabase
+from memory.src.infrastructure.adapters.in_memory_thinking_graph import InMemoryThinkingGraph
 from memory.src.infrastructure.adapters.in_memory_vector_store import InMemoryVectorStore
 from memory.src.infrastructure.adapters.mock_embedding import MockEmbedding
 from memory.src.infrastructure.adapters.ollama_embedding import OllamaEmbedding
 from memory.src.infrastructure.database.repositories import PgDatabaseRepository
+from memory.src.infrastructure.database.thinking_graph_repository import PgThinkingGraphRepository
 from memory.src.infrastructure.vector.pgvector import PgVectorStoreRepository
 
 configure_logging("MemoryService", settings.MINDOS_ENV)
@@ -54,6 +56,7 @@ logger = get_logger("memory_main")
 # Instanciar almacenes en memoria compartidos si DATABASE_TYPE es 'in_memory'
 in_memory_db = InMemoryDatabase()
 in_memory_vector_store = InMemoryVectorStore()
+in_memory_thinking_graph = InMemoryThinkingGraph()
 
 
 def _make_embedding():
@@ -104,6 +107,12 @@ async def get_repositories(session: AsyncSession = Depends(get_db_session)):
         return db_repo, vector_repo
     else:
         return in_memory_db, in_memory_vector_store
+
+async def get_thinking_graph_repo(session: AsyncSession = Depends(get_db_session)):
+    """Inyecta el adaptador del Thinking Graph (F2-T1)."""
+    if settings.DATABASE_TYPE == "postgres":
+        return PgThinkingGraphRepository(session)
+    return in_memory_thinking_graph
 
 async def register_capabilities():
     """Registra de forma proactiva las capacidades del servicio de memoria en el agente Planner."""
@@ -621,5 +630,12 @@ async def get_context(
         graph_expansion_decay=settings.CONTEXT_GRAPH_EXPANSION_DECAY,
     )
     return await context_builder.build_context(request.query, limit=request.limit, depth=request.depth)
+
+
+# Routers de Fase 2 (Thinking Graph, F2-T1+). Se importan al final para evitar ciclos: estos
+# routers importan `get_thinking_graph_repo` desde este mismo módulo.
+from memory.src.api.thinking_router import router as thinking_router  # noqa: E402
+
+app.include_router(thinking_router)
 
 # Fin del módulo main
