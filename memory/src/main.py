@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, status
+from mindos_common.context import set_correlation_id
+from mindos_common.event_bus import RedisEventBus
 from mindos_common.ids import new_id
 from mindos_common.logging import configure_logging, get_logger
 from mindos_schemas.api.v1.memory_dto import (
@@ -16,6 +18,10 @@ from mindos_schemas.api.v1.memory_dto import (
     SearchResultItem,
 )
 from mindos_schemas.capabilities import Capability, RegisterCapabilitiesRequest
+from mindos_schemas.events.v1.memory_events import (
+    KnowledgeCreatedEventData,
+    KnowledgeUpdatedEventData,
+)
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from memory.src.config import settings
@@ -44,6 +50,23 @@ def _make_embedding():
 
 
 embedding_provider = _make_embedding()
+
+# Bus de eventos (Redis Streams). La construcción es perezosa: no conecta hasta publicar.
+event_bus = RedisEventBus(settings.REDIS_URL)
+
+# Stream canónico de eventos de memoria
+MEMORY_STREAM = "mindos.memory"
+
+
+async def publish_event(event_type: str, data, correlation_id) -> None:
+    """
+    Publica un evento en el bus de forma best-effort: si Redis no está disponible, se registra
+    una advertencia pero NO se interrumpe la operación (el event_log en DB es el registro durable).
+    """
+    try:
+        await event_bus.publish(MEMORY_STREAM, event_type, data, correlation_id)
+    except Exception as e:  # noqa: BLE001 - degradación elegante ante Redis caído
+        logger.warning("No se pudo publicar el evento en el bus", event_type=event_type, error=str(e))
 
 # Configurar motor SQLAlchemy asíncrono para PostgreSQL
 engine = create_async_engine(settings.DATABASE_URL, echo=False)
@@ -114,6 +137,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(register_capabilities())
     yield
     # Tareas de apagado
+    await event_bus.close()
     if settings.DATABASE_TYPE == "postgres":
         await engine.dispose()
         logger.info("Conexiones de PostgreSQL liberadas.")
@@ -132,9 +156,14 @@ app = FastAPI(
 )
 async def ingest_knowledge(
     request: IngestKnowledgeRequest,
-    repos=Depends(get_repositories)
+    repos=Depends(get_repositories),
+    x_correlation_id: UUID | None = Header(default=None, alias="X-Correlation-Id")
 ):
     db_repo, vector_repo = repos
+    # Propagar o generar el correlation_id para trazabilidad end-to-end
+    correlation_id = x_correlation_id or new_id()
+    set_correlation_id(correlation_id)
+
     # Generar UUIDv7 (ordenable temporalmente) si es un nuevo nodo
     node_id = request.node_id or new_id()
 
@@ -168,9 +197,29 @@ async def ingest_knowledge(
         payload={"title": request.title, "type": request.entity_type}
     )
 
+    # 3. Construir el evento de dominio (created si es v1, updated en adelante)
+    if next_version == 1:
+        event_type = "com.mindos.memory.knowledge.created"
+        event_data = KnowledgeCreatedEventData(
+            node_id=node_id, entity_type=request.entity_type,
+            version=next_version, title=request.title, author=request.author,
+        )
+    else:
+        event_type = "com.mindos.memory.knowledge.updated"
+        event_data = KnowledgeUpdatedEventData(
+            node_id=node_id, version=next_version, title=request.title,
+            author=request.author, parent_version_id=parent_version_id,
+        )
+
+    # 4. Registro durable en el event_log (dentro de la misma transacción que el conocimiento)
+    await db_repo.save_event_log(new_id(), event_type, event_data.model_dump(mode="json"))
+
     if settings.DATABASE_TYPE == "postgres":
-        # Guardar en base de datos física
+        # Guardar en base de datos física (conocimiento + event_log atómicos)
         await db_repo.session.commit()
+
+    # 5. Notificar al ecosistema por el bus (best-effort, tras la persistencia durable)
+    await publish_event(event_type, event_data, correlation_id)
 
     # Releer la versión recién creada para devolver su timestamp real de persistencia
     saved_ver = await db_repo.get_latest_node_version(node_id)
