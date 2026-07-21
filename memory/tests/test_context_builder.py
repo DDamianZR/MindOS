@@ -26,9 +26,11 @@ class DummyDatabase(DatabasePort):
         self.node_versions = node_versions
         self.relations = relations
 
-    async def save_node(self, node_id, entity_type): pass
-    async def save_node_version(self, node_id, version_id, version, title, content, author, metadata, parent_version_id=None): pass
-    async def get_latest_node_version(self, node_id):
+    async def save_node(self, node_id, object_type): pass
+    async def save_node_version(self, node_id, version_id, version, title, content, author, metadata,
+                                 parent_version_id=None, confidence=0.5, importance=0.5,
+                                 status="active", evidence=None): pass
+    async def get_latest_node_version(self, node_id, include_archived=False):
         return self.node_versions.get(node_id)
     async def get_node_versions(self, node_id):
         return [self.node_versions.get(node_id)] if node_id in self.node_versions else []

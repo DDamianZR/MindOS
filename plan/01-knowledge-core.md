@@ -152,7 +152,7 @@ devuelve resultados reales; una capacidad con `requires_approval=true` queda en 
 ---
 
 ## Cierre de Fase 1
-- [ ] F1-T1 objeto rico · [ ] F1-T2 provenance · [ ] F1-T3 as-of · [ ] F1-T4 soft-delete
+- [x] F1-T1 objeto rico · [ ] F1-T2 provenance · [ ] F1-T3 as-of · [ ] F1-T4 soft-delete
 - [ ] F1-T5 dedup · [ ] F1-T6 relaciones tipadas · [ ] F1-T7 GraphRAG · [ ] F1-T8 executor real
 
 **Verificación:** ingesta rica → búsqueda con citas → `timetravel` → `neighbors` → un agente que

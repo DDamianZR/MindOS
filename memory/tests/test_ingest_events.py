@@ -33,7 +33,7 @@ def test_ingest_emits_event_and_writes_event_log(monkeypatch):
 
     client = TestClient(memory_main.app)
     resp = client.post("/api/v1/memory/ingest", json={
-        "entity_type": "note",
+        "object_type": "note",
         "title": "Traefik",
         "content": "El puerto 443 quedó configurado para TLS.",
         "author": "damian",
@@ -65,7 +65,7 @@ def test_ingest_propagates_incoming_correlation_id(monkeypatch):
     resp = client.post(
         "/api/v1/memory/ingest",
         headers={"X-Correlation-Id": corr},
-        json={"entity_type": "note", "title": "t", "content": "c", "author": "a", "metadata": {}},
+        json={"object_type": "note", "title": "t", "content": "c", "author": "a", "metadata": {}},
     )
     assert resp.status_code == 201
     assert str(fake_bus.published[-1]["correlation_id"]) == corr
