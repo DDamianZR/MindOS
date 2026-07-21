@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from mindos_schemas.api.v1.memory_dto import SourceDto
+
 StepKind = Literal["plan", "execute", "review", "replan"]
 EpisodeStatus = Literal["running", "completed", "failed", "pending_approval"]
 
@@ -69,3 +71,40 @@ class GetEpisodesByNodeResponse(BaseModel):
     """Respuesta de `/thinking/episodes/by-node/{node_id}` (F2-T1): episodios que citaron el nodo."""
     node_id: UUID
     episodes: list[ReasoningEpisodeDto]
+
+
+class ExplainEvidenceDto(BaseModel):
+    """
+    Un nodo de evidencia/soporte en el árbol de explicación (F2-T3): "¿qué llevó a esto?".
+    `relation_type` indica CÓMO se conecta con el nodo padre (DECIDES, EVIDENCES, DERIVED_FROM,
+    ANSWERS). `supporting` anida recursivamente la evidencia DE la evidencia.
+    """
+    node_id: UUID
+    title: str
+    content: str
+    object_type: str | None = None
+    relation_type: str
+    confidence: float = 0.5
+    importance: float = 0.5
+    source: SourceDto | None = Field(default=None, description="Fuente de origen (provenance), si la hay")
+    supporting: list["ExplainEvidenceDto"] = Field(default_factory=list)
+
+
+class ExplainNodeResponse(BaseModel):
+    """
+    Respuesta de `GET /thinking/explain/{node_id}` (F2-T3): "¿cómo llegué a esto?".
+    Recorre hacia atrás las aristas DECIDES/EVIDENCES/DERIVED_FROM/ANSWERS que sustentan el
+    nodo, y los episodios de razonamiento que lo produjeron o lo citaron.
+    """
+    node_id: UUID
+    title: str
+    content: str
+    object_type: str | None = None
+    supporting_evidence: list[ExplainEvidenceDto] = Field(default_factory=list)
+    episodes: list[ReasoningEpisodeDto] = Field(default_factory=list)
+
+
+class ExplainEpisodeResponse(BaseModel):
+    """Respuesta de `GET /thinking/explain/episode/{episode_id}` (F2-T3): narra el episodio paso a paso."""
+    episode: ReasoningEpisodeDto
+    narrative: list[str] = Field(default_factory=list, description="Líneas de texto narrando cada paso en orden")

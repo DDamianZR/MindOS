@@ -145,6 +145,16 @@ class DatabasePort(ABC):
         pass
 
     @abstractmethod
+    async def query_incoming_relations(self, target_node_id: UUID, max_depth: int) -> list[dict[str, Any]]:
+        """
+        Variante inversa de `query_relations_recursive` (F2-T3): camina el grafo HACIA ATRÁS,
+        siguiendo aristas cuyo `target_id` es el nodo de partida (o uno alcanzado en el camino),
+        hasta `max_depth` saltos. Responde "¿qué llevó a esto?" en vez de "¿a qué lleva esto?" —
+        es la base de `/explain`. Devuelve la lista plana de aristas encontradas.
+        """
+        pass
+
+    @abstractmethod
     async def save_event_log(self, event_id: UUID, event_type: str, payload: dict[str, Any]) -> None:
         """Registra un evento de forma inmutable para auditoría y Event Sourcing híbrido."""
         pass

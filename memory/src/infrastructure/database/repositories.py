@@ -224,6 +224,40 @@ class PgDatabaseRepository(DatabasePort):
             } for row in rows
         ]
 
+    async def query_incoming_relations(self, target_node_id: UUID, max_depth: int) -> list[dict[str, Any]]:
+        # Variante inversa (F2-T3): camina el grafo HACIA ATRÁS por target_id, base de /explain.
+        query = text("""
+            WITH RECURSIVE graph_nodes AS (
+                SELECT source_id, target_id, relation_type, valid_from, valid_to, metadata, 1 as depth
+                FROM relations
+                WHERE target_id = :target_node AND valid_to IS_NULL
+                UNION ALL
+                SELECT r.source_id, r.target_id, r.relation_type, r.valid_from, r.valid_to, r.metadata, gn.depth + 1
+                FROM relations r
+                INNER JOIN graph_nodes gn ON r.target_id = gn.source_id
+                WHERE r.valid_to IS_NULL AND gn.depth < :max_depth
+            )
+            SELECT source_id, target_id, relation_type, valid_from, valid_to, metadata FROM graph_nodes;
+        """)
+        query = text(query.text.replace("IS_NULL", "IS NULL"))
+
+        result = await self.session.execute(
+            query,
+            {"target_node": target_node_id, "max_depth": max_depth}
+        )
+
+        rows = result.fetchall()
+        return [
+            {
+                "source_id": row[0],
+                "target_id": row[1],
+                "relation_type": row[2],
+                "valid_from": row[3],
+                "valid_to": row[4],
+                "metadata": row[5]
+            } for row in rows
+        ]
+
     async def query_relations_asof(
         self, start_node_id: UUID, at: datetime, max_depth: int
     ) -> list[dict[str, Any]]:

@@ -144,6 +144,25 @@ class InMemoryDatabase(DatabasePort):
         traverse(start_node_id, 1)
         return results
 
+    async def query_incoming_relations(self, target_node_id: UUID, max_depth: int) -> list[dict[str, Any]]:
+        visited = set()
+        results = []
+
+        def traverse(node_id: UUID, current_depth: int):
+            if current_depth > max_depth or node_id in visited:
+                return
+
+            visited.add(node_id)
+
+            # Buscar relaciones ENTRANTES activas (camina hacia atrás por target_id)
+            for rel in self._relations:
+                if rel["target_id"] == node_id and rel["valid_to"] is None:
+                    results.append(rel)
+                    traverse(rel["source_id"], current_depth + 1)
+
+        traverse(target_node_id, 1)
+        return results
+
     async def query_relations_asof(
         self, start_node_id: UUID, at: datetime, max_depth: int
     ) -> list[dict[str, Any]]:
