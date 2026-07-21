@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from redis.asyncio import ConnectionPool, Redis
 
 from mindos_common.context import set_correlation_id
+from mindos_common.ids import new_id
 from mindos_common.logging import get_logger
 
 logger = get_logger("event_bus")
@@ -34,7 +35,7 @@ class RedisEventBus:
         # Estructura compatible con CloudEvents v1.0
         event_payload = {
             "specversion": "1.0",
-            "id": str(UUID(int=hash(event_type + str(correlation_id)) & ((1<<128)-1))), # Generar ID único
+            "id": str(new_id()),  # UUIDv7 único por evento (antes: hash() colisionaba)
             "type": event_type,
             "time": datetime.now(timezone.utc).isoformat(),
             "datacontenttype": "application/json",

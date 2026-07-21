@@ -28,6 +28,7 @@ class InMemoryDatabase(DatabasePort):
     async def save_node_version(
         self,
         node_id: UUID,
+        version_id: UUID,
         version: int,
         title: str,
         content: str,
@@ -40,6 +41,7 @@ class InMemoryDatabase(DatabasePort):
 
         version_data = {
             "node_id": node_id,
+            "version_id": version_id,
             "version": version,
             "title": title,
             "content": content,

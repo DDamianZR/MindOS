@@ -20,6 +20,9 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# importlib evita colisiones de nombres entre paquetes de test homónimos (memory/tests vs agents/tests).
+addopts = "--import-mode=importlib"
+pythonpath = ["."]
 testpaths = ["schemas", "common", "memory", "agents"]
 markers = [
     "integration: pruebas que requieren servicios externos (Ollama, Postgres, Redis)",
