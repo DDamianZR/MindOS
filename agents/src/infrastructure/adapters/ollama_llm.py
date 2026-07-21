@@ -10,10 +10,12 @@ class OllamaLlm(LlmPort):
     """
     Adaptador concreto de LlmPort que se comunica con una instancia local de Ollama.
     """
-    def __init__(self, model_name: str = "llama3:8b", base_url: str = "http://localhost:11434"):
+    def __init__(self, model_name: str = "llama3:8b", base_url: str = "http://localhost:11434", timeout: float = 180.0):
         self.model_name = model_name
         self.base_url = base_url
-        self.client = httpx.AsyncClient(timeout=60.0)
+        # 180s por defecto: modelos con modo "thinking" (ej. qwen3:8b) pueden tardar >60s en
+        # generar una respuesta, medido empíricamente (F2-T5).
+        self.client = httpx.AsyncClient(timeout=timeout)
 
     async def generate(
         self,

@@ -29,6 +29,16 @@ class Settings(BaseSettings):
     CONTEXT_RECENCY_HALFLIFE_DAYS: float = 30.0  # recencia=0.5 a esta antigüedad; decae exponencialmente
     CONTEXT_GRAPH_EXPANSION_DECAY: float = 0.7  # descuento de similitud heredada para nodos hallados por grafo
 
+    # LLM para razonamiento (F2-T5: detección de contradicciones)
+    LLM_PROVIDER: str = "ollama"  # 'ollama' (real) | 'mock' (tests/dev sin Ollama)
+    LLM_MODEL_REASONING: str = "qwen3:8b"
+
+    # Detección de contradicciones (F2-T5)
+    # Umbral MÍNIMO de similitud para siquiera preguntarle al LLM (filtra candidatos irrelevantes,
+    # calibrado empíricamente: pares no relacionados ~0.5, mismo tema con/sin contradicción ~0.77-0.90).
+    CONTRADICTION_SIMILARITY_THRESHOLD: float = 0.65
+    CONTRADICTION_TOP_K: int = 5
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

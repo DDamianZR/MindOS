@@ -32,3 +32,6 @@ build/
 Thumbs.db
 .idea/
 .vscode/
+
+# Configuración local de herramientas del editor (no forma parte del proyecto)
+.claude/

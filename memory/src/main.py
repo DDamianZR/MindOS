@@ -13,6 +13,7 @@ from mindos_schemas.api.v1.memory_dto import (
     ArchiveNodeResponse,
     ContextBundle,
     ContextRequest,
+    ContradictionScanResponse,
     CreateRelationRequest,
     CreateRelationResponse,
     GetNodeHistoryResponse,
@@ -30,8 +31,9 @@ from mindos_schemas.api.v1.memory_dto import (
     VersionProvenanceDto,
 )
 from mindos_schemas.capabilities import Capability, RegisterCapabilitiesRequest
-from mindos_schemas.domain import RelationType
+from mindos_schemas.domain import ObjectType, RelationType
 from mindos_schemas.events.v1.memory_events import (
+    ContradictionDetectedEventData,
     KnowledgeArchivedEventData,
     KnowledgeCreatedEventData,
     KnowledgeUpdatedEventData,
@@ -40,12 +42,15 @@ from mindos_schemas.events.v1.memory_events import (
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from memory.src.application.services.context_builder import ContextBuilderService
+from memory.src.application.services.contradiction_detector import ContradictionDetectorService
 from memory.src.config import settings
 from memory.src.infrastructure.adapters.in_memory_database import InMemoryDatabase
 from memory.src.infrastructure.adapters.in_memory_thinking_graph import InMemoryThinkingGraph
 from memory.src.infrastructure.adapters.in_memory_vector_store import InMemoryVectorStore
 from memory.src.infrastructure.adapters.mock_embedding import MockEmbedding
+from memory.src.infrastructure.adapters.mock_llm import MockLlm
 from memory.src.infrastructure.adapters.ollama_embedding import OllamaEmbedding
+from memory.src.infrastructure.adapters.ollama_llm import OllamaLlm
 from memory.src.infrastructure.database.repositories import PgDatabaseRepository
 from memory.src.infrastructure.database.thinking_graph_repository import PgThinkingGraphRepository
 from memory.src.infrastructure.vector.pgvector import PgVectorStoreRepository
@@ -69,6 +74,18 @@ def _make_embedding():
 
 
 embedding_provider = _make_embedding()
+
+
+def _make_llm():
+    """Selecciona el proveedor de LLM (F2-T5, detección de contradicciones): real Ollama o mock."""
+    if settings.LLM_PROVIDER == "ollama":
+        logger.info("LLM via Ollama", model=settings.LLM_MODEL_REASONING)
+        return OllamaLlm(settings.LLM_MODEL_REASONING, settings.OLLAMA_URL)
+    logger.info("LLM via Mock")
+    return MockLlm()
+
+
+llm_provider = _make_llm()
 
 # Bus de eventos (Redis Streams). La construcción es perezosa: no conecta hasta publicar.
 event_bus = RedisEventBus(settings.REDIS_URL)
@@ -169,6 +186,14 @@ def _cognitive_capabilities() -> list[Capability]:
             description="Patrones y temas más frecuentes en el conocimiento capturado, por periodo",
             parameters_schema={"type": "object", "properties": {}},
             provider_service="memory", endpoint_path="/api/v1/cognitive/patterns",
+        ),
+        Capability(
+            name="register_decision",
+            description="Registra una decisión con su rationale y la evidencia/objetos que la sustentan/afecta",
+            parameters_schema={"type": "object", "properties": {
+                "title": {"type": "string"}, "content": {"type": "string"}, "rationale": {"type": "string"}},
+                "required": ["title", "content", "rationale"]},
+            provider_service="memory", endpoint_path="/api/v1/cognitive/decision",
         ),
     ]
 
@@ -376,6 +401,27 @@ async def ingest_knowledge(
     await publish_event(event_type, event_data, correlation_id)
     if dup_event_type is not None:
         await publish_event(dup_event_type, dup_event_data, correlation_id)
+
+    # 7. Detección de contradicciones on-ingest (F2-T5): solo para afirmaciones fuertes
+    # (fact/hypothesis), donde una contradicción lógica es más significativa que en una nota libre.
+    if request.object_type in (ObjectType.FACT, ObjectType.HYPOTHESIS):
+        detector = ContradictionDetectorService(db_repo, vector_repo, embedding_provider, llm_provider)
+        detected = await detector.check_node_for_contradictions(
+            node_id, top_k=settings.CONTRADICTION_TOP_K,
+            similarity_threshold=settings.CONTRADICTION_SIMILARITY_THRESHOLD,
+        )
+        for contradiction in detected:
+            contra_event_data = ContradictionDetectedEventData(
+                node_a_id=contradiction["node_a_id"], node_b_id=contradiction["node_b_id"],
+                rationale=contradiction["rationale"], confidence=contradiction["confidence"],
+            )
+            await db_repo.save_event_log(
+                new_id(), "com.mindos.memory.contradiction.detected",
+                contra_event_data.model_dump(mode="json"),
+            )
+            if settings.DATABASE_TYPE == "postgres":
+                await db_repo.session.commit()
+            await publish_event("com.mindos.memory.contradiction.detected", contra_event_data, correlation_id)
 
     # Releer la versión recién creada para devolver su timestamp real de persistencia
     saved_ver = await db_repo.get_latest_node_version(node_id)
@@ -690,6 +736,39 @@ async def get_context(
         graph_expansion_decay=settings.CONTEXT_GRAPH_EXPANSION_DECAY,
     )
     return await context_builder.build_context(request.query, limit=request.limit, depth=request.depth)
+
+
+@app.post("/api/v1/memory/contradictions/scan", response_model=ContradictionScanResponse)
+async def scan_contradictions(
+    limit: int = 200,
+    repos=Depends(get_repositories),
+):
+    """
+    F2-T5 (modo batch): recorre los nodos activos más recientes buscando contradicciones
+    lógicas entre ellos. Complementa el chequeo automático on-ingest de facts/hypotheses.
+    """
+    db_repo, vector_repo = repos
+    detector = ContradictionDetectorService(db_repo, vector_repo, embedding_provider, llm_provider)
+    result = await detector.run_batch(
+        limit=limit, top_k=settings.CONTRADICTION_TOP_K,
+        similarity_threshold=settings.CONTRADICTION_SIMILARITY_THRESHOLD,
+    )
+
+    for contradiction in result["contradictions"]:
+        event_data = ContradictionDetectedEventData(
+            node_a_id=contradiction["node_a_id"], node_b_id=contradiction["node_b_id"],
+            rationale=contradiction["rationale"], confidence=contradiction["confidence"],
+        )
+        await db_repo.save_event_log(
+            new_id(), "com.mindos.memory.contradiction.detected", event_data.model_dump(mode="json"),
+        )
+        if settings.DATABASE_TYPE == "postgres":
+            await db_repo.session.commit()
+        await publish_event("com.mindos.memory.contradiction.detected", event_data, new_id())
+
+    return ContradictionScanResponse(
+        nodes_checked=result["nodes_checked"], contradictions_detected=len(result["contradictions"])
+    )
 
 
 # Routers de Fase 2 (Thinking Graph F2-T1+, Cognitive Query API F2-T4). Se importan al final

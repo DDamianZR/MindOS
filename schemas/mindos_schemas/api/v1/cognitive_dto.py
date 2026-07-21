@@ -94,3 +94,31 @@ class PatternsResponse(BaseModel):
     buckets: list[PatternBucket] = Field(default_factory=list)
     total_nodes: int
     most_common_type: str | None = None
+
+
+class RegisterDecisionRequest(BaseModel):
+    """
+    DTO para registrar una decisión (F2-T6), por un agente o por el usuario. Crea un nodo
+    `decision` con su rationale, enlazado por `EVIDENCES` a las pruebas que la sustentan y
+    por `DECIDES` a los objetos que afecta (un proyecto, una idea, ...).
+    """
+    title: str = Field(..., description="Título breve de la decisión")
+    content: str = Field(..., description="Qué se decidió")
+    rationale: str = Field(..., description="Por qué se tomó esta decisión")
+    author: str = Field(..., description="Quién o qué la registra (usuario o agente)")
+    evidence_node_ids: list[UUID] = Field(
+        default_factory=list, description="Nodos que evidencian/sustentan la decisión"
+    )
+    affected_node_ids: list[UUID] = Field(
+        default_factory=list, description="Nodos afectados por la decisión (proyecto, idea...)"
+    )
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    importance: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class RegisterDecisionResponse(BaseModel):
+    node_id: UUID
+    version: int
+    title: str
+    rationale: str
+    created_at: datetime

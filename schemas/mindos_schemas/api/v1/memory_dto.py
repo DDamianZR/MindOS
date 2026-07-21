@@ -347,3 +347,9 @@ class ContextRequest(BaseModel):
     query: str = Field(..., description="Consulta o meta del agente")
     limit: int = Field(default=5, ge=1, le=50, description="Cantidad final de fragmentos a devolver")
     depth: int = Field(default=1, ge=0, le=5, description="Profundidad de expansión por grafo desde cada semilla")
+
+
+class ContradictionScanResponse(BaseModel):
+    """Respuesta de `POST /memory/contradictions/scan` (F2-T5, modo batch)."""
+    nodes_checked: int = Field(..., description="Cantidad de nodos activos recientes evaluados")
+    contradictions_detected: int = Field(..., description="Nuevas contradicciones confirmadas por el LLM")
