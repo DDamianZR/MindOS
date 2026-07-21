@@ -23,7 +23,7 @@ asyncio_mode = "auto"
 # importlib evita colisiones de nombres entre paquetes de test homónimos (memory/tests vs agents/tests).
 addopts = "--import-mode=importlib"
 pythonpath = ["."]
-testpaths = ["schemas", "common", "memory", "agents", "gateway"]
+testpaths = ["schemas", "common", "memory", "agents", "gateway", "comms"]
 markers = [
     "integration: pruebas que requieren servicios externos (Ollama, Postgres, Redis)",
 ]

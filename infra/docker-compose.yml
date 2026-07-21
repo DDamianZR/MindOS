@@ -107,6 +107,21 @@ services:
     mem_limit: 768m
     networks: [mindos-net]
 
+  comms:
+    build:
+      context: ..
+      dockerfile: comms/Dockerfile
+    container_name: mindos-comms
+    environment:
+      MINDOS_ENV: ${MINDOS_ENV:-production}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 256m
+    networks: [mindos-net]
+
   gateway:
     build:
       context: ..
@@ -129,6 +144,8 @@ services:
       memory:
         condition: service_healthy
       agents:
+        condition: service_healthy
+      comms:
         condition: service_healthy
       redis:
         condition: service_healthy
