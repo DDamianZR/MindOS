@@ -42,6 +42,16 @@ def get_llm_port():
         return OllamaLlm(model_name=settings.OLLAMA_MODEL, base_url=settings.OLLAMA_URL)
     return MockLlm()
 
+
+def resolve_service_url(provider_service: str) -> str | None:
+    """
+    Resuelve el `provider_service` de una Capability (ej: 'memory') a la URL base del
+    servicio que la implementa (F1-T8). Servicios futuros (Fase 3+: whatsapp, comms...)
+    se suman aquí a medida que existan.
+    """
+    known_services = {"memory": settings.MEMORY_URL}
+    return known_services.get(provider_service)
+
 @app.get("/health")
 async def health():
     """Liveness básico para healthchecks de Docker/Traefik."""
@@ -95,18 +105,11 @@ async def execute_agent_goal(
             except Exception:
                 pass
 
-    # 2. Inicializar componentes del grafo LangGraph
+    # 2. Inicializar componentes del grafo LangGraph. El Executor despacha capacidades reales
+    # (F1-T8) vía HTTP contra el servicio resuelto de `resolve_service_url`.
     planner = LlmPlanner(llm)
     reviewer = LlmReviewer(llm)
-    executor = CapabilityExecutor(capability_registry)
-
-    # Registrar un mock dispatcher para simular la ejecución física de herramientas externas
-    async def search_memory_dispatcher(inputs):
-        logger.info("Despachando consulta de búsqueda de memoria desde el Executor")
-        # En una ejecución real, esto llamaría a la API del Memory Service
-        return f"[Resultado] Datos actualizados para la consulta '{inputs.get('query')}'."
-
-    executor.register_mock_handler("search_knowledge", search_memory_dispatcher)
+    executor = CapabilityExecutor(capability_registry, service_url_resolver=resolve_service_url)
 
     # 3. Compilar y ejecutar el grafo asíncronamente
     agent_graph = PlannerExecutorReviewerGraph(planner, executor, reviewer)
@@ -166,5 +169,7 @@ async def execute_agent_goal(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fallo crítico en el motor de planificación: {str(e)}"
         ) from e
+    finally:
+        await executor.close()
 
 # Importaciones complementarias necesarias
