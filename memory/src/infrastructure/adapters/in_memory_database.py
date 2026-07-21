@@ -72,11 +72,14 @@ class InMemoryDatabase(DatabasePort):
         self, node_id: UUID, include_archived: bool = False
     ) -> dict[str, Any] | None:
         versions = self._versions.get(node_id, [])
-        if not include_archived:
-            versions = [v for v in versions if v.get("tombstoned_at") is None]
-        if versions:
-            return versions[-1]  # La última activa
-        return None
+        if not versions:
+            return None
+        latest = versions[-1]  # La versión de mayor número, tombstoneada o no.
+        # Si la más reciente está archivada, el nodo se considera archivado: NO se retrocede
+        # a una versión antigua activa (eso resucitaría contenido desactualizado sin avisar).
+        if not include_archived and latest.get("tombstoned_at") is not None:
+            return None
+        return latest
 
     async def get_node_versions(self, node_id: UUID) -> list[dict[str, Any]]:
         return self._versions.get(node_id, [])
@@ -171,6 +174,13 @@ class InMemoryDatabase(DatabasePort):
             "payload": payload,
             "logged_at": datetime.now(timezone.utc)
         })
+
+    async def set_latest_version_tombstone(self, node_id: UUID, tombstoned: bool) -> bool:
+        versions = self._versions.get(node_id, [])
+        if not versions:
+            return False
+        versions[-1]["tombstoned_at"] = datetime.now(timezone.utc) if tombstoned else None
+        return True
 
     async def find_source_by_kind_uri(self, kind: str, uri: str) -> dict[str, Any] | None:
         for src in self._sources.values():

@@ -1,7 +1,7 @@
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from memory.src.application.ports.vector_store import VectorSearchResult, VectorStorePort
@@ -64,15 +64,3 @@ class PgVectorStoreRepository(VectorStorePort):
             ) for v, dist in rows
         ]
 
-    async def delete(self, vector_id: str) -> None:
-        node_id = UUID(vector_id)
-        # Limpiar el campo de embedding
-        stmt = (
-            update(DbObjectVersion)
-            .where(DbObjectVersion.node_id == node_id)
-            .values(embedding=None)
-        )
-        await self.session.execute(stmt)
-        await self.session.flush()
-
-#

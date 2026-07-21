@@ -45,3 +45,11 @@ class RelationDeletedEventData(BaseModel):
     source_id: UUID = Field(..., description="ID del nodo de origen")
     target_id: UUID = Field(..., description="ID del nodo de destino")
     relation_type: str = Field(..., description="Tipo de relación eliminada")
+
+
+class KnowledgeArchivedEventData(BaseModel):
+    """
+    Payload de datos para los eventos com.mindos.memory.knowledge.archived / .restored (F1-T4).
+    Nunca implica borrado físico: solo el cambio del flag `tombstoned_at` de la versión vigente.
+    """
+    node_id: UUID = Field(..., description="ID del nodo de conocimiento archivado o restaurado")

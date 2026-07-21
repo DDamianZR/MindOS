@@ -48,10 +48,6 @@ class InMemoryVectorStore(VectorStorePort):
         results.sort(key=lambda x: x.score, reverse=True)
         return results[:limit]
 
-    async def delete(self, vector_id: str) -> None:
-        if vector_id in self._vectors:
-            del self._vectors[vector_id]
-
     def _cosine_similarity(self, v1: list[float], v2: list[float]) -> float:
         if not v1 or not v2 or len(v1) != len(v2):
             return 0.0

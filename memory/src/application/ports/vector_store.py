@@ -13,6 +13,11 @@ class VectorStorePort(ABC):
     """
     Puerto de infraestructura para operaciones en la base de datos vectorial.
     Permite independizar el dominio de tecnologías concretas como pgvector, Qdrant o Milvus.
+
+    No expone una operación de borrado: el ciclo de vida de un Objeto Cognitivo (archivar,
+    restaurar) se gestiona íntegramente vía `DatabasePort` marcando `tombstoned_at` (F1-T4)
+    — nunca borrando el vector físicamente. El almacén vectorial es un índice de similitud
+    puro; la noción de "archivado" es un concepto de dominio, no del índice.
     """
     @abstractmethod
     async def upsert(self, vector_id: str, embedding: list[float], payload: dict[str, Any]) -> None:
@@ -30,12 +35,9 @@ class VectorStorePort(ABC):
     ) -> list[VectorSearchResult]:
         """
         Realiza una búsqueda de similitud coseno sobre el índice vectorial.
-        """
-        pass
 
-    @abstractmethod
-    async def delete(self, vector_id: str) -> None:
-        """
-        Elimina un vector del almacén por su identificador único.
+        Puede devolver candidatos que luego resulten archivados a nivel de dominio (el
+        caller debe filtrarlos vía `DatabasePort.get_latest_node_version(include_archived=False)`);
+        por eso conviene pedir más candidatos que el `limit` final deseado.
         """
         pass
