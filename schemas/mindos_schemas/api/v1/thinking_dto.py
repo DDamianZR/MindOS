@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from mindos_schemas.api.v1.memory_dto import SourceDto
 
-StepKind = Literal["plan", "execute", "review", "replan"]
+StepKind = Literal["plan", "execute", "review", "replan", "conclude"]
 EpisodeStatus = Literal["running", "completed", "failed", "pending_approval"]
 
 
@@ -22,7 +22,9 @@ class AppendStepRequest(BaseModel):
     """DTO para añadir un paso a un episodio existente."""
     step_id: UUID = Field(..., description="ID único del paso (UUIDv7)")
     step_index: int = Field(..., description="Orden del paso dentro del episodio")
-    kind: StepKind = Field(..., description="Tipo de paso del ciclo Planner→Executor→Reviewer")
+    kind: StepKind = Field(
+        ..., description="Tipo de paso: ciclo Planner→Executor→Reviewer, o 'conclude' (nodo de conocimiento creado)"
+    )
     input: str | None = Field(default=None, description="Entrada del paso (prompt, tarea, etc.)")
     output: str | None = Field(default=None, description="Salida cruda del paso")
     capability_name: str | None = Field(default=None, description="Capacidad usada, si aplica (paso execute)")

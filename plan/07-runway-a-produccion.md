@@ -116,17 +116,27 @@ temporal *as-of*, soft-delete global, dedup semántico, relaciones tipadas, Cont
 
 ## 5. Stage 2 — Thinking Graph + explicabilidad (Fase 2)
 
-**Ejecuta** `F2-T1 … F2-T6` de [`02-thinking-graph.md`](02-thinking-graph.md).
+✅ **Código completo** (2026-07-21): `F2-T1 … F2-T6` de [`02-thinking-graph.md`](02-thinking-graph.md)
+implementadas y verificadas (67/67 tests no-integration, `ruff` limpio, migración 0004 validada
+offline). El smoke test de cierre encontró y corrigió dos bugs reales (candidatos de contradicción
+sin filtrar por tipo; el nodo `outcome` no enlazaba a su episodio) — ver `plan/NOTAS.md`.
 
-**Foco:** modelo del Thinking Graph, persistencia de trazas de razonamiento, `/explain`,
+**Foco (hecho):** modelo del Thinking Graph, persistencia de trazas de razonamiento, `/explain`,
 **Cognitive Query API (las 7 preguntas)**, detección de contradicciones, objeto Decisión.
 
 ### 🚦 Deploy Gate 2 — "MindOS ya se siente como la visión"
-- [ ] Migraciones del Thinking Graph aplicadas; rebuild + healthchecks.
-- [ ] Las 7 rutas `/cognitive/*` responden con datos reales sobre un dataset sembrado.
-- [ ] `/explain/{node_id}` reconstruye el razonamiento con citas hasta las fuentes.
-- [ ] Sembrar dos hechos opuestos crea una arista `CONTRADICTS` y aparece en `/cognitive/contradictions`.
-- [ ] CI verde.
+- [x] Migración (0004) generada y validada offline; `alembic upgrade head` online pendiente de
+      Docker/Postgres (igual que Gate 0/1 — ver `plan/NOTAS.md`).
+- [ ] Rebuild + `up -d`; healthchecks verdes. *(pendiente: requiere Docker)*
+- [x] Las 7 rutas `/cognitive/*` responden con datos reales sobre un dataset sembrado — verificado
+      en `memory/tests/test_phase2_smoke.py` (in-process vía ASGI; falta repetir contra el stack
+      Docker real una vez levantado).
+- [x] `/explain/{node_id}` reconstruye el razonamiento con citas hasta las fuentes, incluyendo el
+      episodio del agente que lo produjo.
+- [x] Sembrar dos hechos opuestos crea una arista `CONTRADICTS` y aparece en `/cognitive/contradictions`
+      (`memory/tests/test_contradiction_detector.py`); confirmación con Ollama real (`qwen3:8b`)
+      pendiente por RAM insuficiente en este entorno de desarrollo (test `integration` en el repo).
+- [ ] `pytest -m "not integration"` verde (✅ local, 67/67); CI verde. *(pendiente: verificar en CI remoto)*
 
 ---
 

@@ -131,6 +131,8 @@ class ExplainabilityService:
                 verdict = "Aprobado" if step.approved else "Rechazado"
                 detail = f" — {step.feedback}" if step.feedback else ""
                 narrative.append(f"[{step.step_index}] Revisión: {verdict}{detail}")
+            elif step.kind == "conclude":
+                narrative.append(f"[{step.step_index}] Conclusión: {step.output or '(sin salida)'}")
         if dto.final_output:
             narrative.append(f"Resultado final ({dto.status}): {dto.final_output}")
 

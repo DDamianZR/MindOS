@@ -124,3 +124,24 @@ agentes y el MCP los usen).
 
 **Hito:** en este punto MindOS ya **se siente** como la visión aunque no tenga dashboard ni WhatsApp:
 responde las 7 preguntas y explica su razonamiento por API.
+
+---
+
+✅ **Fase 2 completa (2026-07-21).** 67/67 tests no-integration verdes (`ruff check .` limpio),
+migración 0004 (`reasoning_episodes`/`reasoning_steps`) validada offline. Smoke test de cierre
+(`memory/tests/test_phase2_smoke.py`) verificado end-to-end: un agente real (Agents+Memory
+in-process vía `httpx.ASGITransport`) deja un episodio que `/explain` reconstruye con evidencia
+y episodio de origen, y las 7 preguntas insignia responden con datos reales sobre un dataset
+sembrado (ideas, evidencia, decisión con rationale, dos hechos contradictorios).
+
+Escribir ese smoke test con un dataset heterogéneo (no aislado como los tests unitarios de cada
+tarea) encontró y corrigió dos bugs reales del mecanismo, no solo del test — ver `plan/NOTAS.md`
+(entradas "Cierre Fase 2"): (1) la detección de contradicciones comparaba un `fact` contra
+candidatos de cualquier tipo (idea, decisión...), no solo otros `fact/hypothesis`; (2) el nodo
+`outcome` que un agente promueve a conocimiento no quedaba enlazado a su episodio de origen en el
+Thinking Graph (se añadió el paso `kind="conclude"`).
+
+Pendiente (no bloqueante, igual que Fases 0-1): verificación *online* contra Postgres/Redis reales
+y el test de integración con Ollama real de F2-T5, ambos sin poder ejecutarse en este entorno de
+desarrollo (sin Docker; RAM insuficiente para `qwen3:8b` bajo carga). Ver Stage 2 en
+`plan/07-runway-a-produccion.md`.

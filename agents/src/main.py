@@ -182,8 +182,10 @@ async def execute_agent_goal(
         # que hace que "el final_output quede ligado a las evidencias" (DoD F2-T2).
         if episode_status == "completed" and final_state.get("final_output"):
             await _record_outcome_as_knowledge(
-                http_client=http_client, goal=goal, final_output=final_state["final_output"],
-                context_node_ids=context_node_ids, episode_id=corr_id, correlation_id=corr_id,
+                http_client=http_client, recorder=recorder, goal=goal,
+                final_output=final_state["final_output"], context_node_ids=context_node_ids,
+                episode_id=corr_id, correlation_id=corr_id,
+                step_index=final_state.get("reasoning_step_counter", 0),
             )
 
         # Estructurar la respuesta
@@ -214,11 +216,13 @@ async def execute_agent_goal(
 
 async def _record_outcome_as_knowledge(
     http_client: httpx.AsyncClient,
+    recorder: HttpReasoningRecorder,
     goal: str,
     final_output: str,
     context_node_ids: list[UUID],
     episode_id: UUID,
     correlation_id: UUID,
+    step_index: int,
 ) -> None:
     """
     F2-T2: promueve el resultado de un episodio exitoso a un nodo de conocimiento citable
@@ -255,6 +259,15 @@ async def _record_outcome_as_knowledge(
                     },
                 )
                 rel_resp.raise_for_status()
+
+            # Enlaza el episodio con el nodo que produjo (F2-T3: /explain debe poder mostrar,
+            # a partir del nodo 'outcome', qué corrida de agente lo generó — no solo qué lo
+            # evidencia en el Knowledge Graph).
+            await recorder.record_step(
+                episode_id=episode_id, step_id=new_id(), step_index=step_index, kind="conclude",
+                input_text=goal, output_text=f"Nodo de conocimiento creado: {outcome_node_id}",
+                knowledge_refs=[UUID(outcome_node_id)],
+            )
 
             logger.info(
                 "Resultado del episodio promovido a conocimiento",
