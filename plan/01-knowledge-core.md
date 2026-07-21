@@ -153,7 +153,7 @@ devuelve resultados reales; una capacidad con `requires_approval=true` queda en 
 
 ## Cierre de Fase 1
 - [x] F1-T1 objeto rico · [x] F1-T2 provenance · [x] F1-T3 as-of · [x] F1-T4 soft-delete
-- [x] F1-T5 dedup · [x] F1-T6 relaciones tipadas · [ ] F1-T7 GraphRAG · [ ] F1-T8 executor real
+- [x] F1-T5 dedup · [x] F1-T6 relaciones tipadas · [x] F1-T7 GraphRAG · [ ] F1-T8 executor real
 
 **Verificación:** ingesta rica → búsqueda con citas → `timetravel` → `neighbors` → un agente que
 recupera contexto real y ejecuta `search_knowledge` de verdad. Todo con `pytest` verde.

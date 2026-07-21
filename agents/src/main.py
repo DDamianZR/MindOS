@@ -5,6 +5,7 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from mindos_common.context import set_correlation_id
 from mindos_common.ids import new_id
 from mindos_common.logging import configure_logging, get_logger
+from mindos_schemas.api.v1.memory_dto import ContextBundle
 from mindos_schemas.capabilities import (
     Capability,
     RegisterCapabilitiesRequest,
@@ -71,26 +72,25 @@ async def execute_agent_goal(
 
     logger.info("Iniciando ejecución de meta para el usuario", goal=goal, correlation_id=str(corr_id))
 
-    # 1. Recuperar contexto de forma dinámica desde el Memory Service vía HTTP
-    memory_search_url = f"{settings.MEMORY_URL}/api/v1/memory/search"
+    # 1. Recuperar contexto GraphRAG (F1-T7) de forma dinámica desde el Memory Service vía HTTP.
+    # El Context Builder v2 combina similitud vectorial + expansión por grafo + reranking por
+    # importancia/recencia/confianza, y devuelve fragmentos citables (node_id/source).
+    memory_context_url = f"{settings.MEMORY_URL}/api/v1/memory/context"
     # Fallback local para desarrollo fuera del bridge
-    fallback_url = "http://localhost:8001/api/v1/memory/search"
+    fallback_url = "http://localhost:8001/api/v1/memory/context"
 
     initial_context = "No hay contexto disponible de forma síncrona."
     async with httpx.AsyncClient(timeout=10.0) as client:
-        for url in [memory_search_url, fallback_url]:
+        for url in [memory_context_url, fallback_url]:
             try:
-                # Simular consulta RAG semántica
-                response = await client.post(url, params={"query": goal, "limit": 3})
+                response = await client.post(url, json={"query": goal, "limit": 3, "depth": 1})
                 if response.status_code == 200:
-                    data = response.json()
-                    # Reconstruir un prompt de contexto simple
-                    items = data.get("results", [])
-                    context_lines = []
-                    for idx, it in enumerate(items):
-                        context_lines.append(f"[{idx+1}] {it.get('title')}: {it.get('content')}")
-                    initial_context = "\n".join(context_lines)
-                    logger.info("Contexto unificado recuperado con éxito de la memoria")
+                    bundle = ContextBundle.model_validate(response.json())
+                    initial_context = bundle.to_prompt()
+                    logger.info(
+                        "Contexto GraphRAG recuperado con éxito de la memoria",
+                        fragments=len(bundle.fragments)
+                    )
                     break
             except Exception:
                 pass

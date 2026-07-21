@@ -254,3 +254,96 @@ class GetNodeNeighborsResponse(BaseModel):
     node_id: UUID = Field(..., description="ID del nodo de conocimiento consultado")
     depth: int = Field(..., description="Profundidad de la caminata del grafo")
     neighbors: list[NeighborEdgeDto] = Field(..., description="Aristas encontradas")
+
+
+class ContextFragment(BaseModel):
+    """
+    Un fragmento de conocimiento seleccionado por el Context Builder v2 (F1-T7, GraphRAG).
+    Lleva todo lo necesario para que el agente pueda **citar** su origen ("según [n1]...").
+    """
+    citation_label: str = Field(..., description="Etiqueta corta de cita (ej: 'n1') referenciable en el prompt")
+    node_id: UUID = Field(..., description="Nodo de conocimiento de origen")
+    version: int = Field(..., description="Versión del nodo de la que proviene el fragmento")
+    title: str = Field(..., description="Título del nodo")
+    content: str = Field(..., description="Contenido del nodo")
+    object_type: ObjectType | None = Field(default=None, description="Tipo de Objeto Cognitivo")
+    source_id: UUID | None = Field(default=None, description="Fuente de origen (provenance, F1-T2), si la hay")
+    score: float = Field(..., description="Score combinado final (similitud+importancia+recencia+confianza)")
+    similarity: float = Field(..., description="Componente de similitud vectorial (0-1) usado en el score")
+    importance: float = Field(..., description="Importancia del nodo (0-1)")
+    confidence: float = Field(..., description="Confianza del nodo (0-1)")
+    recency: float = Field(..., description="Componente de recencia (0-1, decaimiento exponencial por edad)")
+    via_graph: bool = Field(
+        default=False,
+        description="True si el fragmento se descubrió por expansión de grafo (no por similitud vectorial directa)"
+    )
+
+
+class ContextTimelineEntry(BaseModel):
+    """Un hito reciente relacionado, para la sección temporal corta del contexto (F1-T7)."""
+    node_id: UUID = Field(..., description="Nodo de conocimiento")
+    version: int = Field(..., description="Versión de ese hito")
+    title: str = Field(..., description="Título del nodo")
+    created_at: datetime = Field(..., description="Fecha del hito")
+
+
+class ContextBundle(BaseModel):
+    """
+    Contexto estructurado que el Context Builder v2 (F1-T7, GraphRAG) entrega a un agente:
+    combina similitud vectorial, expansión por grafo, reranking por importancia/recencia/
+    confianza, una línea temporal corta y relaciones conceptuales legibles — todo citable.
+    """
+    query: str = Field(..., description="Consulta original")
+    fragments: list[ContextFragment] = Field(..., description="Fragmentos relevantes, ordenados por score")
+    timeline: list[ContextTimelineEntry] = Field(
+        default_factory=list, description="Hitos/versiones recientes relevantes"
+    )
+    relations_summary: list[str] = Field(
+        default_factory=list, description="Relaciones conceptuales asociadas, en texto legible"
+    )
+
+    @property
+    def citations(self) -> dict[str, "ContextFragment"]:
+        """Mapa `citation_label -> fragmento`, para verificar/trazar una cita hecha por un agente."""
+        return {f.citation_label: f for f in self.fragments}
+
+    def to_prompt(self) -> str:
+        """Serializa el contexto a texto plano para inyectar en el prompt de un LLM."""
+        lines = [f'=== CONTEXTO PARA: "{self.query}" ===', ""]
+
+        if self.fragments:
+            lines.append("--- Conocimiento relevante (ordenado por relevancia) ---")
+            for f in self.fragments:
+                lines.append(
+                    f"[{f.citation_label}] {f.title} "
+                    f"(tipo={f.object_type}, confianza={f.confidence:.2f}, importancia={f.importance:.2f})"
+                )
+                lines.append(f.content)
+                lines.append("")
+        else:
+            lines.append("No se encontró conocimiento relevante en la memoria.")
+            lines.append("")
+
+        if self.relations_summary:
+            lines.append("--- Relaciones conceptuales asociadas ---")
+            lines.extend(self.relations_summary)
+            lines.append("")
+
+        if self.timeline:
+            lines.append("--- Línea temporal reciente relacionada ---")
+            for t in self.timeline:
+                lines.append(f"- {t.created_at.date().isoformat()}: {t.title} (v{t.version})")
+            lines.append("")
+
+        lines.append(
+            'Al citar información de este contexto, referenciá la etiqueta entre corchetes, '
+            'p.ej. "según [n1]...".'
+        )
+        return "\n".join(lines)
+
+
+class ContextRequest(BaseModel):
+    """DTO para solicitar el contexto GraphRAG (F1-T7)."""
+    query: str = Field(..., description="Consulta o meta del agente")
+    limit: int = Field(default=5, ge=1, le=50, description="Cantidad final de fragmentos a devolver")
+    depth: int = Field(default=1, ge=0, le=5, description="Profundidad de expansión por grafo desde cada semilla")
