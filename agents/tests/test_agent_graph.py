@@ -1,6 +1,7 @@
 from uuid import UUID
 
 import pytest
+from mindos_common.ids import new_id
 from mindos_schemas.api.v1.agent_dto import GeneratePlanResponse, PlanStep, ReviewStepResponse
 from mindos_schemas.capabilities import Capability
 
@@ -8,6 +9,18 @@ from agents.src.domain.executor.executor import ExecutionResult, Executor
 from agents.src.domain.planner.agent_graph import AgentState, PlannerExecutorReviewerGraph
 from agents.src.domain.planner.planner import Planner
 from agents.src.domain.planner.reviewer import Reviewer
+
+
+def _base_state(**overrides) -> AgentState:
+    """Construye un AgentState válido con defaults razonables; los tests solo pisan lo que necesitan."""
+    defaults = {
+        "goal": "Lograr meta de prueba", "context": "Contexto base", "plan_id": None, "steps": [],
+        "current_step_idx": 0, "available_capabilities": [], "inputs": {}, "feedback": None,
+        "error": None, "final_output": None, "retries": 0, "max_retries": 3,
+        "correlation_id": new_id(), "context_node_ids": [], "reasoning_step_counter": 0,
+    }
+    defaults.update(overrides)
+    return AgentState(**defaults)
 
 
 # Mock del Planner
@@ -69,18 +82,7 @@ async def test_agent_graph_execution_success():
         endpoint_path="/api"
     )
 
-    initial_state = AgentState(
-        goal="Lograr meta de prueba",
-        context="Contexto base",
-        plan_id=None,
-        steps=[],
-        current_step_idx=0,
-        available_capabilities=[cap],
-        inputs={},
-        feedback=None,
-        error=None,
-        final_output=None
-    )
+    initial_state = _base_state(available_capabilities=[cap])
 
     # 4. Invocar Grafo
     result = await compiled_graph.ainvoke(initial_state)
@@ -114,18 +116,7 @@ async def test_agent_graph_execution_replan_on_reject():
         endpoint_path="/api"
     )
 
-    initial_state = AgentState(
-        goal="Lograr meta de prueba",
-        context="Contexto base",
-        plan_id=None,
-        steps=[],
-        current_step_idx=0,
-        available_capabilities=[cap],
-        inputs={},
-        feedback=None,
-        error=None,
-        final_output=None
-    )
+    initial_state = _base_state(available_capabilities=[cap])
 
     # 3. Para evitar bucle infinito en el test de replanificación, mockearemos
     # el comportamiento del revisor para que la segunda vez apruebe
@@ -168,11 +159,7 @@ async def test_agent_graph_stops_after_max_retries():
         name="search_knowledge", description="Búsqueda", parameters_schema={},
         provider_service="memory", endpoint_path="/api"
     )
-    initial_state = AgentState(
-        goal="Meta imposible de aprobar", context="Contexto base", plan_id=None, steps=[],
-        current_step_idx=0, available_capabilities=[cap], inputs={}, feedback=None,
-        error=None, final_output=None, retries=0, max_retries=3
-    )
+    initial_state = _base_state(goal="Meta imposible de aprobar", available_capabilities=[cap])
 
     result = await compiled_graph.ainvoke(initial_state)
 
@@ -210,11 +197,7 @@ async def test_agent_graph_stops_at_pending_approval_without_reviewing():
         name="search_knowledge", description="Búsqueda", parameters_schema={},
         provider_service="memory", endpoint_path="/api", requires_approval=True,
     )
-    initial_state = AgentState(
-        goal="Acción sensible", context="Contexto base", plan_id=None, steps=[],
-        current_step_idx=0, available_capabilities=[cap], inputs={}, feedback=None,
-        error=None, final_output=None, retries=0, max_retries=3
-    )
+    initial_state = _base_state(goal="Acción sensible", available_capabilities=[cap])
 
     result = await compiled_graph.ainvoke(initial_state)
 
@@ -223,3 +206,65 @@ async def test_agent_graph_stops_at_pending_approval_without_reviewing():
     assert result["final_output"] is not None
     assert "aprobación" in result["final_output"].lower()
     assert result["error"] is None
+
+
+class RecordingReasoningRecorder:
+    """Test double que registra cada llamada para verificar la secuencia (F2-T2)."""
+    def __init__(self):
+        self.calls: list[tuple] = []
+
+    async def start_episode(self, episode_id, goal, correlation_id, agent):
+        self.calls.append(("start_episode", episode_id, goal, correlation_id, agent))
+
+    async def record_step(self, episode_id, step_id, step_index, kind, input_text, output_text,
+                           capability_name=None, approved=None, feedback=None, knowledge_refs=None):
+        self.calls.append(("record_step", episode_id, step_index, kind, capability_name,
+                            approved, tuple(knowledge_refs or [])))
+
+    async def close_episode(self, episode_id, status, final_output=None):
+        self.calls.append(("close_episode", episode_id, status, final_output))
+
+
+@pytest.mark.asyncio
+async def test_recorder_captures_episode_and_steps_with_knowledge_refs():
+    """F2-T2: el grafo inicia el episodio una vez, registra un paso por nodo (plan/execute/
+    review) con índices crecientes, y propaga context_node_ids como knowledge_refs del plan
+    y la ejecución (no de la revisión, que no consume contexto directamente)."""
+    planner = DummyPlanner()
+    reviewer = DummyReviewer(approved=True)
+    executor = DummyExecutor()
+    recorder = RecordingReasoningRecorder()
+
+    graph_workflow = PlannerExecutorReviewerGraph(planner, executor, reviewer, recorder=recorder)
+    compiled_graph = graph_workflow.graph
+
+    cap = Capability(
+        name="search_knowledge", description="Búsqueda", parameters_schema={},
+        provider_service="memory", endpoint_path="/api",
+    )
+    context_node = new_id()
+    correlation_id = new_id()
+    initial_state = _base_state(
+        available_capabilities=[cap], correlation_id=correlation_id, context_node_ids=[context_node],
+    )
+
+    result = await compiled_graph.ainvoke(initial_state)
+    assert result["error"] is None
+
+    kinds_recorded = [c[3] for c in recorder.calls if c[0] == "record_step"]
+    assert kinds_recorded == ["plan", "execute", "review"]
+
+    assert recorder.calls[0] == ("start_episode", correlation_id, "Lograr meta de prueba", correlation_id,
+                                  "AgentsService")
+
+    plan_call = next(c for c in recorder.calls if c[0] == "record_step" and c[3] == "plan")
+    assert plan_call[6] == (context_node,), "el plan debe citar los nodos de contexto disponibles"
+
+    execute_call = next(c for c in recorder.calls if c[0] == "record_step" and c[3] == "execute")
+    assert execute_call[4] == "search_knowledge"
+    assert execute_call[6] == (context_node,)
+
+    # Los step_index son estrictamente crecientes (contador monotónico del episodio completo)
+    step_indexes = [c[2] for c in recorder.calls if c[0] == "record_step"]
+    assert step_indexes == sorted(step_indexes)
+    assert len(set(step_indexes)) == len(step_indexes), "cada paso debe tener un índice único"
