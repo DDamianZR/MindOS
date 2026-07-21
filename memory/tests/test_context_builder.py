@@ -39,6 +39,7 @@ class DummyDatabase(DatabasePort):
         return [self.node_versions.get(node_id)] if node_id in self.node_versions else []
     async def get_node_version_asof(self, node_id, at):
         return self.node_versions.get(node_id)
+    async def set_latest_version_tombstone(self, node_id, tombstoned): return node_id in self.node_versions
     async def save_relation(self, source_id, target_id, relation_type, metadata): pass
     async def delete_relation(self, source_id, target_id, relation_type): pass
     async def query_relations_recursive(self, start_node_id, max_depth):

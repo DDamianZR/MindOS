@@ -91,21 +91,25 @@ class PgDatabaseRepository(DatabasePort):
     async def get_latest_node_version(
         self, node_id: UUID, include_archived: bool = False
     ) -> dict[str, Any] | None:
+        # Siempre se busca la versión de mayor número (SIN filtrar por tombstone en la query):
+        # si la más reciente está archivada, el nodo se considera archivado y no se retrocede
+        # a una versión antigua activa.
         stmt = (
             select(DbObjectVersion, DbCognitiveObject.object_type)
             .join(DbCognitiveObject, DbObjectVersion.node_id == DbCognitiveObject.id)
             .where(DbObjectVersion.node_id == node_id)
+            .order_by(DbObjectVersion.version.desc())
+            .limit(1)
         )
-        if not include_archived:
-            stmt = stmt.where(DbObjectVersion.tombstoned_at.is_(None))
-        stmt = stmt.order_by(DbObjectVersion.version.desc()).limit(1)
-
         result = await self.session.execute(stmt)
         row = result.first()
-        if row:
-            ver, object_type = row
-            return self._version_row_to_dict(ver, object_type)
-        return None
+        if not row:
+            return None
+
+        ver, object_type = row
+        if not include_archived and ver.tombstoned_at is not None:
+            return None
+        return self._version_row_to_dict(ver, object_type)
 
     async def get_node_versions(self, node_id: UUID) -> list[dict[str, Any]]:
         stmt = (
@@ -294,3 +298,19 @@ class PgDatabaseRepository(DatabasePort):
         result = await self.session.execute(stmt)
         src = result.scalar_one_or_none()
         return self._source_row_to_dict(src) if src else None
+
+    async def set_latest_version_tombstone(self, node_id: UUID, tombstoned: bool) -> bool:
+        stmt = (
+            select(DbObjectVersion)
+            .where(DbObjectVersion.node_id == node_id)
+            .order_by(DbObjectVersion.version.desc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        ver = result.scalar_one_or_none()
+        if ver is None:
+            return False
+
+        ver.tombstoned_at = datetime.now(timezone.utc) if tombstoned else None
+        await self.session.flush()
+        return True

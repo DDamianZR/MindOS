@@ -185,3 +185,12 @@ class TimeTravelResponse(BaseModel):
     relations: list[TimeTravelRelationDto] = Field(
         default_factory=list, description="Relaciones vigentes en `at`"
     )
+
+
+class ArchiveNodeResponse(BaseModel):
+    """
+    Respuesta de archivar/restaurar un nodo (F1-T4, soft-delete). Nunca implica borrado físico:
+    solo cambia si la versión vigente queda oculta por defecto de búsquedas y lecturas.
+    """
+    node_id: UUID = Field(..., description="ID del nodo de conocimiento")
+    archived: bool = Field(..., description="Estado resultante: True si quedó archivado, False si activo")

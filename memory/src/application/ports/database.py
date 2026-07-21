@@ -53,21 +53,32 @@ class DatabasePort(ABC):
         self, node_id: UUID, include_archived: bool = False
     ) -> dict[str, Any] | None:
         """
-        Recupera la versión más reciente activa de un nodo.
+        Recupera la versión más reciente (mayor número de versión) de un nodo.
 
         El dict devuelto incluye `version_id` (id propio de la fila de versión, necesario para
         encadenar `parent_version_id`), `object_type` (del nodo padre), los atributos cognitivos
         ricos (`confidence`, `importance`, `status`, `evidence`, `salience`, `tombstoned_at`) y
         `provenance_source_id` (F1-T2, la fuente de origen si la hay).
 
-        Por defecto excluye versiones tombstoneadas (`tombstoned_at IS NOT NULL`); pasar
-        `include_archived=True` para incluirlas (F1-T4).
+        Por defecto (`include_archived=False`), si la versión más reciente está tombstoneada
+        (F1-T4, "el nodo está archivado"), devuelve `None` en vez de retroceder a una versión
+        antigua activa — eso resucitaría contenido desactualizado sin avisar. Pasar
+        `include_archived=True` para recuperarla igualmente.
         """
         pass
 
     @abstractmethod
     async def get_node_versions(self, node_id: UUID) -> list[dict[str, Any]]:
         """Recupera cronológicamente todas las versiones históricas de un nodo (incluye tombstoneadas)."""
+        pass
+
+    @abstractmethod
+    async def set_latest_version_tombstone(self, node_id: UUID, tombstoned: bool) -> bool:
+        """
+        Marca (archivar, `tombstoned=True`) o desmarca (restaurar, `tombstoned=False`) como
+        tombstoneada la versión más reciente del nodo (F1-T4, soft-delete). Nunca borra la fila:
+        solo actualiza `tombstoned_at`. Devuelve `False` si el nodo no existe.
+        """
         pass
 
     @abstractmethod

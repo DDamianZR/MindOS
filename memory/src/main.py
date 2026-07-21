@@ -10,6 +10,7 @@ from mindos_common.event_bus import RedisEventBus
 from mindos_common.ids import new_id
 from mindos_common.logging import configure_logging, get_logger
 from mindos_schemas.api.v1.memory_dto import (
+    ArchiveNodeResponse,
     GetNodeHistoryResponse,
     GetNodeProvenanceResponse,
     IngestKnowledgeRequest,
@@ -24,6 +25,7 @@ from mindos_schemas.api.v1.memory_dto import (
 )
 from mindos_schemas.capabilities import Capability, RegisterCapabilitiesRequest
 from mindos_schemas.events.v1.memory_events import (
+    KnowledgeArchivedEventData,
     KnowledgeCreatedEventData,
     KnowledgeUpdatedEventData,
 )
@@ -271,21 +273,83 @@ async def ingest_knowledge(
         status=request.status,
     )
 
+
+async def _set_node_tombstone(
+    node_id: UUID, tombstoned: bool, repos, x_correlation_id: UUID | None
+) -> ArchiveNodeResponse:
+    """Lógica compartida de archivar/restaurar (F1-T4): nunca borra, solo marca `tombstoned_at`."""
+    db_repo, _ = repos
+    correlation_id = x_correlation_id or new_id()
+    set_correlation_id(correlation_id)
+
+    changed = await db_repo.set_latest_version_tombstone(node_id, tombstoned=tombstoned)
+    if not changed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Nodo {node_id} no encontrado en memoria."
+        )
+
+    event_type = "com.mindos.memory.knowledge.archived" if tombstoned else "com.mindos.memory.knowledge.restored"
+    event_data = KnowledgeArchivedEventData(node_id=node_id)
+    await db_repo.save_event_log(new_id(), event_type, event_data.model_dump(mode="json"))
+
+    if settings.DATABASE_TYPE == "postgres":
+        await db_repo.session.commit()
+
+    await publish_event(event_type, event_data, correlation_id)
+    return ArchiveNodeResponse(node_id=node_id, archived=tombstoned)
+
+
+@app.post("/api/v1/memory/node/{node_id}/archive", response_model=ArchiveNodeResponse)
+async def archive_node(
+    node_id: UUID,
+    repos=Depends(get_repositories),
+    x_correlation_id: UUID | None = Header(default=None, alias="X-Correlation-Id")
+):
+    """
+    Archiva un nodo (soft-delete, F1-T4): oculta su versión vigente de búsquedas y lecturas
+    por defecto. Nunca borra físicamente — usar `include_archived=true` para recuperarlo,
+    o `POST .../restore` para reactivarlo.
+    """
+    return await _set_node_tombstone(node_id, tombstoned=True, repos=repos, x_correlation_id=x_correlation_id)
+
+
+@app.post("/api/v1/memory/node/{node_id}/restore", response_model=ArchiveNodeResponse)
+async def restore_node(
+    node_id: UUID,
+    repos=Depends(get_repositories),
+    x_correlation_id: UUID | None = Header(default=None, alias="X-Correlation-Id")
+):
+    """Restaura un nodo previamente archivado (F1-T4): vuelve a ser visible por defecto."""
+    return await _set_node_tombstone(node_id, tombstoned=False, repos=repos, x_correlation_id=x_correlation_id)
+
+
+# El almacén vectorial no conoce el concepto de "archivado" (F1-T4): puede devolver candidatos
+# que luego resulten tombstoneados en la DB. Se pide más candidatos de los necesarios para
+# compensar el filtrado posterior sin tener que repetir la búsqueda vectorial.
+_SEARCH_OVERFETCH_FACTOR = 4
+_SEARCH_OVERFETCH_MAX = 50
+
+
 @app.post("/api/v1/memory/search", response_model=SearchKnowledgeResponse)
 async def search_knowledge(
     query: str,
     limit: int = 3,
+    include_archived: bool = False,
     repos=Depends(get_repositories)
 ):
     db_repo, vector_repo = repos
     # Realizar búsqueda semántica e híbrida
     query_vector = await embedding_provider.embed_query(query)
-    vector_results = await vector_repo.search(query_vector, limit=limit)
+    fetch_limit = min(limit * _SEARCH_OVERFETCH_FACTOR, _SEARCH_OVERFETCH_MAX)
+    vector_results = await vector_repo.search(query_vector, limit=fetch_limit)
 
     results = []
     for res in vector_results:
+        if len(results) >= limit:
+            break
         nid = UUID(res.id)
-        ver = await db_repo.get_latest_node_version(nid)
+        ver = await db_repo.get_latest_node_version(nid, include_archived=include_archived)
         if ver:
             results.append(SearchResultItem(
                 node_id=nid,
