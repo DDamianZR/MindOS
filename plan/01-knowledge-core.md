@@ -157,3 +157,9 @@ devuelve resultados reales; una capacidad con `requires_approval=true` queda en 
 
 **Verificación:** ingesta rica → búsqueda con citas → `timetravel` → `neighbors` → un agente que
 recupera contexto real y ejecuta `search_knowledge` de verdad. Todo con `pytest` verde.
+
+✅ **Fase 1 completa** (2026-07-21). 39/39 tests verdes (`ruff check .` limpio), incluyendo el
+smoke end-to-end de cierre en `memory/tests/test_phase1_smoke.py` (ingesta rica → `/context` con
+citas → `/timetravel` → `/neighbors` → un agente real ejecutando `search_knowledge` vía HTTP contra
+el Memory Service, sin mocks de handler). Verificación *online* contra Postgres real sigue
+pendiente de Docker (ver `plan/NOTAS.md`), igual que la Fase 0.

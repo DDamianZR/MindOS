@@ -94,19 +94,22 @@ Producción se endurece de forma incremental: la seguridad (auth, TLS, firewall,
 
 ## 4. Stage 1 — Knowledge Core rico (Fase 1)
 
-**Ejecuta** `F1-T1 … F1-T8` de [`01-knowledge-core.md`](01-knowledge-core.md) en orden.
-Cada `Fx` con nuevo esquema ⇒ **nueva migración Alembic** (`alembic revision -m "..."`), nunca
-`create_all` en prod. Recuerda regenerar/añadir la migración en el mismo commit de la tarea.
+✅ **Código completo** (2026-07-21): `F1-T1 … F1-T8` de [`01-knowledge-core.md`](01-knowledge-core.md)
+implementadas y verificadas (39/39 tests, `ruff` limpio, migraciones 0002/0003 validadas offline).
+Cada tarea con esquema nuevo generó su propia migración Alembic, según lo pedido.
 
-**Foco:** objeto cognitivo rico (confianza/importancia/evidencia/estado), provenance, consulta
+**Foco (hecho):** objeto cognitivo rico (confianza/importancia/evidencia/estado), provenance, consulta
 temporal *as-of*, soft-delete global, dedup semántico, relaciones tipadas, Context Builder v2
 (GraphRAG con citas), Executor real (despacho HTTP + gate de aprobación).
 
 ### 🚦 Deploy Gate 1
-- [ ] Nuevas migraciones aplican limpio (`alembic upgrade head` en el stack).
-- [ ] Rebuild + `up -d`; healthchecks verdes.
-- [ ] Smoke: ingesta rica → búsqueda con citas → `/timetravel` → `/neighbors` → un agente que
-      recupera contexto real y ejecuta `search_knowledge` de verdad.
+- [x] Migraciones (0002, 0003) generadas y validadas offline; `alembic upgrade head` online
+      pendiente de Docker/Postgres (igual que el Gate 0 — ver `plan/NOTAS.md`).
+- [ ] Rebuild + `up -d`; healthchecks verdes. *(pendiente: requiere Docker)*
+- [x] Smoke: ingesta rica → búsqueda con citas → `/timetravel` → `/neighbors` → un agente que
+      recupera contexto real y ejecuta `search_knowledge` de verdad — verificado en
+      `memory/tests/test_phase1_smoke.py` (in-process vía ASGI; falta repetir contra el stack
+      Docker real una vez levantado).
 - [ ] `pytest -m "not integration"` verde; CI verde.
 
 ---

@@ -132,7 +132,7 @@ Regla de oro: **nada accede a la infraestructura directamente**; todo pasa por e
 | Fase | Archivo | Entrega | Estado / Depende de |
 |---|---|---|---|
 | **0 · Fundaciones** | [`00-fundaciones.md`](00-fundaciones.md) | Kernel correcto, persistente, event-driven, arrancable con Docker. | ✅ código hecho (falta verificación online) |
-| **1 · Knowledge Core** | [`01-knowledge-core.md`](01-knowledge-core.md) | Modelo cognitivo rico, consulta temporal, GraphRAG, executor real. | ⏳ depende de 0 |
+| **1 · Knowledge Core** | [`01-knowledge-core.md`](01-knowledge-core.md) | Modelo cognitivo rico, consulta temporal, GraphRAG, executor real. | ✅ código hecho (falta verificación online) |
 | **2 · Thinking Graph** | [`02-thinking-graph.md`](02-thinking-graph.md) | Explicabilidad, trazas de razonamiento, Cognitive Query API, contradicciones. | ⏳ depende de 1 |
 | **3 · Gateway + Comunicación** | [`03-gateway-comunicacion.md`](03-gateway-comunicacion.md) | Entrada única + auth; captura WhatsApp/CLI/email; pipeline de ingestión. | ⏳ depende de 1 |
 | **4 · Interfaces** | [`04-interfaces.md`](04-interfaces.md) | Dashboard (grafo/timeline/trazas), servidor MCP, PWA de captura. | ⏳ depende de 2, 3 |
