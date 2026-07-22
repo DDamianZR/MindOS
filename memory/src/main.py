@@ -784,15 +784,32 @@ async def get_node_neighbors(
     depth: int = 2,
     repos=Depends(get_repositories)
 ):
-    """Vecinos del Knowledge Graph alcanzables desde el nodo, hasta `depth` saltos (F1-T6)."""
+    """
+    Vecinos del Knowledge Graph alcanzables desde el nodo, hasta `depth` saltos (F1-T6).
+
+    Combina `query_relations_recursive` (aristas SALIENTES: "a qué lleva esto") con
+    `query_incoming_relations` (aristas ENTRANTES: "qué lleva a esto") -- un nodo que es sobre
+    todo blanco de relaciones (p.ej. una `decision` con varias `EVIDENCES` apuntándole) debe
+    verse igual de conectado que uno que sobre todo origina relaciones; explorar el grafo desde
+    cualquier nodo no debería depender de en qué dirección se guardó cada arista. Ambas
+    recorren en direcciones opuestas desde el mismo nodo, así que en un ciclo (A→B y B→A)
+    pueden devolver la misma arista cada una por su lado -- de ahí el dedup.
+    """
     db_repo, _ = repos
-    relations = await db_repo.query_relations_recursive(node_id, max_depth=depth)
-    neighbors = [
-        NeighborEdgeDto(
+    outgoing = await db_repo.query_relations_recursive(node_id, max_depth=depth)
+    incoming = await db_repo.query_incoming_relations(node_id, max_depth=depth)
+
+    seen: set[tuple[str, str, str]] = set()
+    neighbors = []
+    for r in outgoing + incoming:
+        key = (str(r["source_id"]), str(r["target_id"]), r["relation_type"])
+        if key in seen:
+            continue
+        seen.add(key)
+        neighbors.append(NeighborEdgeDto(
             source_id=r["source_id"], target_id=r["target_id"],
             relation_type=r["relation_type"], metadata=r.get("metadata") or {},
-        ) for r in relations
-    ]
+        ))
     return GetNodeNeighborsResponse(node_id=node_id, depth=depth, neighbors=neighbors)
 
 

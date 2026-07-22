@@ -46,12 +46,19 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # Mapa de enrutamiento: prefijo del path (/api/v1/{clave}/...) -> URL base del servicio.
-# "approvals" no es un servicio propio: las aprobaciones viven en Agents (episodios/capacidades),
-# Gateway solo expone el path público que pide el plan (F3-T1 DoD).
+# "approvals", "thinking" y "cognitive" no son servicios propios: viven como routers montados
+# en Agents/Memory (ver approvals_router.py, thinking_router.py, cognitive_router.py) bajo su
+# propio prefijo /api/v1/{router}/... -- el proxy reconstruye la URL downstream como
+# "{base_url}/api/v1/{service_key}/{resto}", así que cada uno necesita su propia entrada aquí
+# para que esa reconstrucción caiga exactamente en la ruta real del router, aunque no sea "su"
+# servicio dueño. Sin esto el Gateway responde 404 "Servicio desconocido" (F4-T1: se detectó al
+# conectar el Visor de razonamiento y el Panel de las 7 preguntas del Dashboard).
 SERVICE_ROUTES = {
     "memory": settings.MEMORY_URL,
     "agents": settings.AGENTS_URL,
     "comms": settings.COMMS_URL,
     "approvals": settings.AGENTS_URL,
+    "thinking": settings.MEMORY_URL,
+    "cognitive": settings.MEMORY_URL,
     "mcp": settings.MCP_URL,
 }

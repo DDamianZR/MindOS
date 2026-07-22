@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from mindos_common.ids import new_id
 from mindos_schemas.api.v1.approval_dto import (
     ApprovalRequestDto,
+    ListApprovalsResponse,
     ResolveApprovalRequest,
     ResolveApprovalResponse,
 )
@@ -38,6 +39,15 @@ async def _next_step_index(http_client, episode_id: UUID) -> int:
         return max((s["step_index"] for s in steps), default=-1) + 1
     except Exception:
         return 0
+
+
+@router.get("/", response_model=ListApprovalsResponse)
+async def list_pending_approvals():
+    """Bandeja de aprobaciones (F4-T1): las `pending`, más recientes primero. Nota: la ruta es
+    '/' (no '') a propósito — con trailing slash reconstruye byte a byte lo que arma el proxy
+    del Gateway para `rest_of_path=''`, evitando el 307 de Starlette que el proxy no sigue."""
+    records = await agents_main.approval_store.list_pending()
+    return ListApprovalsResponse(approvals=[ApprovalRequestDto(**r) for r in records])
 
 
 @router.get("/{approval_id}", response_model=ApprovalRequestDto)

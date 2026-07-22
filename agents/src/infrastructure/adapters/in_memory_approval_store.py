@@ -38,6 +38,10 @@ class InMemoryApprovalStore(ApprovalPort):
     async def get(self, approval_id: UUID) -> dict[str, Any] | None:
         return self._approvals.get(approval_id)
 
+    async def list_pending(self) -> list[dict[str, Any]]:
+        pending = [r for r in self._approvals.values() if r["status"] == "pending"]
+        return sorted(pending, key=lambda r: r["created_at"], reverse=True)
+
     async def resolve(
         self, approval_id: UUID, status: str, result_output: str | None = None
     ) -> dict[str, Any] | None:

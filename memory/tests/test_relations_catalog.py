@@ -88,3 +88,37 @@ def test_neighbors_respects_depth(monkeypatch):
 
     depth2 = client.get(f"/api/v1/memory/node/{a}/neighbors", params={"depth": 2}).json()["neighbors"]
     assert {e["target_id"] for e in depth2} == {b, c}
+
+
+def test_neighbors_includes_incoming_relations_not_just_outgoing(monkeypatch):
+    """F4-T1: descubierto al integrar el Grafo del Dashboard -- un nodo que solo RECIBE
+    relaciones (p.ej. una decisión con evidencia apuntándole) debe verse conectado en /neighbors
+    igual que uno que las origina; antes solo se recorrían las salientes."""
+    client, _ = _fresh_client(monkeypatch)
+    evidence = _ingest(client, "Evidencia")
+    decision = _ingest(client, "Decisión")
+
+    client.post("/api/v1/memory/relation", json={
+        "source_id": evidence, "target_id": decision, "relation_type": "EVIDENCES",
+    })
+
+    # Sin la arista saliente propia de `decision`, antes del fix esto devolvía una lista vacía.
+    neighbors = client.get(f"/api/v1/memory/node/{decision}/neighbors", params={"depth": 1}).json()["neighbors"]
+    assert len(neighbors) == 1
+    assert neighbors[0]["source_id"] == evidence
+    assert neighbors[0]["target_id"] == decision
+    assert neighbors[0]["relation_type"] == "EVIDENCES"
+
+
+def test_neighbors_dedups_edges_found_from_both_directions_in_a_cycle(monkeypatch):
+    """En un ciclo (A->B y B->A), la recorrida saliente y la entrante desde A pueden encontrar
+    ambas aristas cada una por su lado a depth=2 -- no deben duplicarse en la respuesta."""
+    client, _ = _fresh_client(monkeypatch)
+    a = _ingest(client, "Nodo A")
+    b = _ingest(client, "Nodo B")
+    client.post("/api/v1/memory/relation", json={"source_id": a, "target_id": b, "relation_type": "RELATED_TO"})
+    client.post("/api/v1/memory/relation", json={"source_id": b, "target_id": a, "relation_type": "RELATED_TO"})
+
+    neighbors = client.get(f"/api/v1/memory/node/{a}/neighbors", params={"depth": 2}).json()["neighbors"]
+    pairs = [(e["source_id"], e["target_id"]) for e in neighbors]
+    assert sorted(pairs) == sorted([(a, b), (b, a)])
