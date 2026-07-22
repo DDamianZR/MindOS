@@ -7,6 +7,12 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# F3-T6: binario de Tesseract (pytesseract es solo un wrapper, no funciona sin esto) + paquete
+# de idioma español, ya que MindOS captura contenido mayormente en español.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tesseract-ocr tesseract-ocr-spa \
+    && rm -rf /var/lib/apt/lists/*
+
 # 1. Paquetes locales del monorepo (editables) — capa cacheable
 COPY schemas/ ./schemas/
 COPY common/ ./common/

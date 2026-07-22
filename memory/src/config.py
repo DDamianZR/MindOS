@@ -39,6 +39,26 @@ class Settings(BaseSettings):
     CONTRADICTION_SIMILARITY_THRESHOLD: float = 0.65
     CONTRADICTION_TOP_K: int = 5
 
+    # OCR (F3-T6): imágenes/PDFs escaneados capturados por el pipeline de ingestión (F3-T5)
+    OCR_PROVIDER: str = "tesseract"  # 'tesseract' (real) | 'mock' (tests/dev sin el binario)
+    OCR_LANGUAGES: str = "spa+eng"
+
+    # STT (F3-T6): notas de voz capturadas por el pipeline de ingestión (F3-T5)
+    STT_PROVIDER: str = "faster_whisper"  # 'faster_whisper' (real) | 'mock' (tests/dev)
+    STT_MODEL_SIZE: str = "small"
+
+    # Storage (F3-T6): blobs originales (PDFs, imágenes, audio) referenciados por `source`.
+    # Default 'in_memory' (como DATABASE_TYPE): 'local_fs' escribe al disco en __init__, así
+    # que un default distinto de in_memory crearía directorios fuera del repo en cada import
+    # de main.py durante tests/dev local. Producción lo fija explícito vía compose.
+    STORAGE_TYPE: str = "in_memory"  # 'local_fs' | 'minio' | 'in_memory'
+    STORAGE_LOCAL_DIR: str = "/data/storage"
+    MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_ACCESS_KEY: str = ""
+    MINIO_SECRET_KEY: str = ""
+    MINIO_BUCKET: str = "mindos"
+    MINIO_SECURE: bool = False
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
