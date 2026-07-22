@@ -76,6 +76,8 @@ services:
       # queda disponible en código si más adelante se necesitan varias réplicas.
       STORAGE_TYPE: local_fs
       STORAGE_LOCAL_DIR: /data/storage
+      # F3-T5: a dónde disparar un agente si el pipeline de ingestión detecta una pregunta.
+      AGENTS_URL: http://agents:8002
     volumes:
       - storage_data:/data/storage
     depends_on:

@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     # Event Bus
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Pipeline de ingestión (F3-T5): a dónde disparar un agente si el mensaje es una pregunta.
+    AGENTS_URL: str = "http://localhost:8002"
+    # Auto-enlazado (F3-T5 paso 4): mismo calibre que CONTRADICTION_SIMILARITY_THRESHOLD (F2-T5).
+    AUTO_LINK_SIMILARITY_THRESHOLD: float = 0.65
+
     # Dedup semántico en ingest (F1-T5)
     DEDUP_SIMILARITY_THRESHOLD: float = 0.92
 
