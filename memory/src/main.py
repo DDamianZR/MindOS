@@ -46,6 +46,7 @@ from memory.src.application.services.contradiction_detector import (
     CONTRADICTABLE_TYPES,
     ContradictionDetectorService,
 )
+from memory.src.application.services.ingestion_pipeline import IngestionPipelineService
 from memory.src.config import settings
 from memory.src.infrastructure.adapters.faster_whisper_stt import FasterWhisperStt
 from memory.src.infrastructure.adapters.in_memory_database import InMemoryDatabase
@@ -300,6 +301,19 @@ async def lifespan(app: FastAPI):
 
     # Lanzar registro de capacidades en segundo plano para no bloquear el arranque
     asyncio.create_task(register_capabilities())
+
+    # F3-T5: consumidor del pipeline de ingestión. `RedisEventBus.subscribe` de por sí traga
+    # errores de conexión y reintenta en su propio worker de fondo, pero el `xgroup_create`
+    # inicial (o un event_bus de prueba que no implemente `.subscribe`, como los `_NoopBus`
+    # locales de varios tests) podría lanzar antes de eso — nunca debe impedir que el resto del
+    # servicio arranque.
+    try:
+        await event_bus.subscribe(
+            COMMS_STREAM, group_name="memory-ingestion-pipeline", consumer_name="memory-1",
+            callback=pipeline_service.handle_event,
+        )
+    except Exception as e:
+        logger.warning("No se pudo iniciar el consumidor del pipeline de ingestión", error=str(e))
     yield
     # Tareas de apagado
     await event_bus.close()
@@ -312,6 +326,20 @@ app = FastAPI(
     description="Motor de Conocimiento, RAG y Grafo relacional temporal de MindOS",
     version="1.0.0",
     lifespan=lifespan
+)
+
+# F3-T5: pipeline de ingestión — se construye DESPUÉS de `app` (necesita referenciarla para el
+# loopback in-process hacia sí misma) pero ANTES de que arranque el lifespan; monkeypatchable
+# como objeto completo en tests (mismo patrón que `capability_registry`/`approval_store`).
+COMMS_STREAM = "mindos.comms"
+_pipeline_memory_client = httpx.AsyncClient(
+    transport=httpx.ASGITransport(app=app), base_url="http://memory-internal", timeout=30.0,
+)
+_pipeline_agents_client = httpx.AsyncClient(base_url=settings.AGENTS_URL, timeout=30.0)
+pipeline_service = IngestionPipelineService(
+    memory_client=_pipeline_memory_client, agents_client=_pipeline_agents_client,
+    storage=storage_provider, ocr=ocr_provider, stt=stt_provider, llm=llm_provider,
+    similarity_threshold=settings.AUTO_LINK_SIMILARITY_THRESHOLD,
 )
 
 @app.get("/health")

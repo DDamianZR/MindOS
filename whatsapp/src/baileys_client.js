@@ -7,7 +7,9 @@ import qrcode from "qrcode-terminal";
  * volumen Docker persistente — nunca se sube al repo). Reconecta automáticamente salvo que la
  * sesión haya sido cerrada explícitamente desde el teléfono (logout real).
  *
- * `onMessage(waMessage, botJid)` se invoca por cada mensaje entrante nuevo (no propio).
+ * `onMessage(waMessage, botJid, sock)` se invoca por cada mensaje entrante nuevo (no propio);
+ * `sock` se pasa para que quien reciba pueda descargar medios adjuntos (`downloadMediaMessage`
+ * necesita el socket activo para re-solicitar el medio a WhatsApp si el link inicial expiró).
  * `onSocketReady(sock)` se invoca con el socket activo cada vez que se (re)conecta — necesario
  * porque tras una reconexión Baileys entrega un socket NUEVO, no reutiliza el anterior.
  *
@@ -46,7 +48,7 @@ export async function connectToWhatsApp(authDir, onMessage, onSocketReady) {
     if (type !== "notify") return;
     for (const msg of messages) {
       if (msg.key.fromMe || !msg.message) continue;
-      await onMessage(msg, sock.user?.id);
+      await onMessage(msg, sock.user?.id, sock);
     }
   });
 
