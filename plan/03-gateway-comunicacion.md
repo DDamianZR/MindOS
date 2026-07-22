@@ -86,3 +86,31 @@ cualquier canal** (WhatsApp, CLI, REST, email), donde **todo termina en el mismo
 
 **Hito:** MindOS ya **captura desde el mundo real** y responde por el mismo canal, con todo lo
 capturado convertido en conocimiento indexado, enlazado y trazable.
+
+---
+
+✅ **Fase 3 completa (2026-07-22).** 131/131 tests Python no-integration + 14/14 tests Node
+(`node --test`, `whatsapp/`) verdes, `ruff check .` limpio. Dos servicios nuevos (`gateway/`,
+`comms/`) y un microservicio Node (`whatsapp/`), todos con su Dockerfile y su lugar en
+`infra/docker-compose.yml` — Traefik es ahora el único servicio expuesto al host.
+
+Smoke test de cierre (`memory/tests/test_phase3_smoke.py`) verificado pasando por el **único
+punto de entrada real** (Gateway, autenticado): capturar un mensaje vía `/api/v1/comms/inbound`
+llega a comms real, el pipeline (disparado a mano — no hay Redis real en este entorno) lo
+indexa con provenance real, recuperable de vuelta también por Gateway; una capacidad sensible
+pausada se resuelve vía `/api/v1/approvals/{id}/resolve` (Gateway lo mapea a Agents, no es un
+servicio propio) y despacha la capacidad diferida; `/health` agrega el estado real de los tres
+servicios. No repite la cobertura ya exhaustiva de cada tarea (30+ tests dedicados) — prueba
+específicamente las costuras que solo existen accediendo por el camino real.
+
+Tres bugs reales encontrados (no de test) durante el cierre, documentados en `plan/NOTAS.md`:
+detección de auto-enlazado sin filtrar candidatos por similitud negativa de `MockEmbedding`
+(hallazgo de test, no de producción), `TestClient(app)` disparando el lifespan sin bloque `with`
+(rompía cualquier `_NoopBus` sin `.subscribe`), y `STORAGE_TYPE=local_fs` por defecto creando un
+directorio fuera del repo en cada import de `memory.src.main`.
+
+**Pendiente (no bloqueante, mismo patrón que Fases 0-2):** verificación *online* completa del
+stack (Traefik+Gateway+Postgres+Redis+los 5 servicios) en un server real — sin Docker en este
+entorno de desarrollo; el adaptador de WhatsApp no verificable sin un teléfono real para el QR;
+los tests de integración con Tesseract/MinIO/faster-whisper reales (binario/servidor/RAM
+respectivamente no disponibles aquí). Ver Stage 3 en `plan/07-runway-a-produccion.md`.
