@@ -1,16 +1,22 @@
 from typing import Any
 from uuid import UUID
 
+import httpx
 from fastapi import FastAPI, Header, HTTPException, status
 from mindos_common.context import set_correlation_id
 from mindos_common.event_bus import RedisEventBus
 from mindos_common.ids import new_id
 from mindos_common.logging import configure_logging, get_logger
+from mindos_schemas.events.v1.communication_events import MessageSentEventData
 from pydantic import BaseModel, Field
 
-from comms.src.application.ports.communication import CommunicationInboundPort
+from comms.src.application.ports.communication import (
+    CommunicationInboundPort,
+    CommunicationOutboundPort,
+)
 from comms.src.config import settings
 from comms.src.infrastructure.adapters.event_bus_inbound_handler import EventBusInboundHandler
+from comms.src.infrastructure.adapters.whatsapp_outbound_adapter import WhatsAppOutboundAdapter
 
 configure_logging("CommsService", settings.MINDOS_ENV)
 logger = get_logger("comms_main")
@@ -24,6 +30,13 @@ app = FastAPI(
 # Bus de eventos (Redis Streams). La construcción es perezosa: no conecta hasta publicar.
 event_bus = RedisEventBus(settings.REDIS_URL)
 inbound_handler: CommunicationInboundPort = EventBusInboundHandler(event_bus, settings.INBOUND_STREAM)
+
+# F3-T7: canales con entrega bidireccional real. CLI/REST no están aquí a propósito — son de
+# solo-captura (F3-T3), no tienen una conexión persistente a la que entregarles una respuesta.
+_outbound_http_client = httpx.AsyncClient(timeout=15.0)
+outbound_channels: dict[str, CommunicationOutboundPort] = {
+    "whatsapp": WhatsAppOutboundAdapter(_outbound_http_client, settings.WHATSAPP_URL),
+}
 
 
 class InboundMessageRequest(BaseModel):
@@ -41,6 +54,21 @@ class InboundMessageResponse(BaseModel):
     status: str
     message_id: str
     provider: str
+
+
+class OutboundMessageRequest(BaseModel):
+    """F3-T7: una respuesta a entregar por el canal de origen del mensaje que la disparó."""
+    provider: str = Field(..., description="Canal por el que entregar: whatsapp, cli, rest, ...")
+    recipient_id: str = Field(..., description="Identificador del destinatario en su canal")
+    text: str = Field(..., description="Contenido a entregar")
+    message_id: str | None = Field(default=None, description="ID a asociar al envío; se genera si falta")
+
+
+class OutboundMessageResponse(BaseModel):
+    status: str
+    message_id: str
+    provider: str
+    delivered: bool = Field(..., description="Si el canal soporta entrega bidireccional y esta tuvo éxito")
 
 
 @app.get("/health")
@@ -80,5 +108,56 @@ async def receive_inbound_message(
         ) from e
 
     return InboundMessageResponse(status="received", message_id=message_id, provider=request.provider)
+
+
+@app.post("/api/v1/comms/outbound", status_code=status.HTTP_201_CREATED, response_model=OutboundMessageResponse)
+async def send_outbound_message(
+    request: OutboundMessageRequest,
+    x_correlation_id: UUID | None = Header(default=None, alias="X-Correlation-Id"),
+):
+    """
+    F3-T7: entrega una respuesta por el canal de origen — el agente (o Memory) la llama cuando
+    un episodio con `reply_to` concluye, o cuando una capacidad queda pendiente de aprobación.
+
+    A diferencia de `/inbound` (donde el evento en el bus ES el único registro), aquí la
+    ENTREGA real es lo esencial — si el canal no soporta entrega bidireccional (cli/rest, F3-T3)
+    o falla, se registra igual como evento (auditoría best-effort) pero no se trata como error:
+    quien llama ya tiene su resultado, perder la notificación de "por si acaso" no debe fallar
+    la respuesta al usuario que sí espera por HTTP.
+    """
+    correlation_id = x_correlation_id or new_id()
+    set_correlation_id(correlation_id)
+    message_id = request.message_id or str(new_id())
+
+    channel = outbound_channels.get(request.provider)
+    delivered = False
+    status_label = "no_channel"
+    if channel:
+        try:
+            await channel.send(request.recipient_id, request.text)
+            delivered = True
+            status_label = "sent"
+        except Exception as e:
+            logger.error("No se pudo entregar el mensaje saliente", provider=request.provider, error=str(e))
+            status_label = "failed"
+    else:
+        logger.info(
+            "Canal sin entrega bidireccional, se omite el envío", provider=request.provider,
+        )
+
+    try:
+        event_data = MessageSentEventData(
+            message_id=message_id, recipient_id=request.recipient_id, provider=request.provider,
+            text=request.text, status=status_label,
+        )
+        await event_bus.publish(
+            settings.OUTBOUND_STREAM, "com.mindos.communication.message.sent", event_data, correlation_id,
+        )
+    except Exception as e:
+        logger.warning("No se pudo publicar el evento de mensaje saliente", error=str(e))
+
+    return OutboundMessageResponse(
+        status=status_label, message_id=message_id, provider=request.provider, delivered=delivered,
+    )
 
 # Fin del módulo main

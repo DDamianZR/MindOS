@@ -36,12 +36,17 @@ class CapabilityExecutor(Executor):
         service_url_resolver: ServiceUrlResolver | None = None,
         http_client: httpx.AsyncClient | None = None,
         approval_store: ApprovalPort | None = None,
+        comms_url: str | None = None,
     ):
         self.registry = registry
         self._mock_handlers: dict[str, Callable[[dict[str, Any]], Awaitable[Any]]] = {}
         self._service_url_resolver = service_url_resolver or (lambda _service: None)
         self._http_client = http_client or httpx.AsyncClient(timeout=15.0)
         self.approval_store = approval_store or InMemoryApprovalStore()
+        # F3-T7: si se da y el paso tiene `reply_to`, notifica por el canal de origen que una
+        # aprobación quedó pendiente. None (default) preserva el comportamiento de F1-T8/F3-T1
+        # (pausar sin notificar) para quien construya el executor sin conocer comms/.
+        self.comms_url = comms_url.rstrip("/") if comms_url else None
 
     def register_mock_handler(self, capability_name: str, handler_callable) -> None:
         """Permite registrar un mock ejecutable en memoria. Uso exclusivo de tests/simulación."""
@@ -79,6 +84,8 @@ class CapabilityExecutor(Executor):
                 "Capacidad requiere aprobación humana, ejecución pausada",
                 capability=cap.name, step_id=step.step_id, approval_id=str(approval_id),
             )
+            if reply_to:
+                await self._notify_approval_needed(approval_id, cap.name, reply_to)
             return ExecutionResult(
                 output=(
                     f"La capacidad '{cap.name}' requiere aprobación humana antes de ejecutarse. "
@@ -88,6 +95,26 @@ class CapabilityExecutor(Executor):
             )
 
         return await self._dispatch(cap, inputs)
+
+    async def _notify_approval_needed(
+        self, approval_id: UUID, capability_name: str, reply_to: dict[str, str]
+    ) -> None:
+        """F3-T7: "una acción sensible pregunta al usuario por WhatsApp... y solo procede tras
+        el sí" — best-effort, igual que el resto de la mensajería saliente: perder el aviso no
+        debe tumbar la ejecución del agente (el approval sigue creado y resoluble por API)."""
+        if not self.comms_url:
+            return
+        text = (
+            f"MindOS necesita tu aprobación para ejecutar '{capability_name}'. "
+            f"ID de la solicitud: {approval_id}"
+        )
+        try:
+            resp = await self._http_client.post(f"{self.comms_url}/api/v1/comms/outbound", json={
+                "provider": reply_to["provider"], "recipient_id": reply_to["sender_id"], "text": text,
+            })
+            resp.raise_for_status()
+        except Exception as e:
+            logger.warning("No se pudo notificar la aprobación pendiente", approval_id=str(approval_id), error=str(e))
 
     async def execute_capability_by_name(self, capability_name: str, inputs: dict[str, Any]) -> ExecutionResult:
         """

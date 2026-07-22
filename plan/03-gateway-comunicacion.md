@@ -82,7 +82,7 @@ cualquier canal** (WhatsApp, CLI, REST, email), donde **todo termina en el mismo
 
 ## Cierre de Fase 3
 - [x] F3-T1 Gateway · [x] F3-T2 Traefik · [x] F3-T3 comms CLI/REST · [x] F3-T4 WhatsApp
-- [x] F3-T5 pipeline · [x] F3-T6 OCR/STT/Storage · [ ] F3-T7 salida+aprobaciones
+- [x] F3-T5 pipeline · [x] F3-T6 OCR/STT/Storage · [x] F3-T7 salida+aprobaciones
 
 **Hito:** MindOS ya **captura desde el mundo real** y responde por el mismo canal, con todo lo
 capturado convertido en conocimiento indexado, enlazado y trazable.
