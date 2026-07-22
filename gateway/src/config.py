@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     COMMS_URL: str = "http://localhost:8003"
     MCP_URL: str = "http://localhost:8005"
 
+    # F4-T1: el Dashboard corre en su propio origen y llama al Gateway directo desde el
+    # navegador — sin CORS, el navegador bloquea la respuesta aunque la petición esté
+    # correctamente autenticada. Un solo origen explícito (no "*"): no hace falta más para un
+    # sistema mono-usuario, y evita abrir el Gateway a cualquier origen arbitrario.
+    DASHBOARD_URL: str = "http://localhost:3000"
+
     # Event Bus (rate-limit usa Redis directamente, no CloudEvents)
     REDIS_URL: str = "redis://localhost:6379/0"
 

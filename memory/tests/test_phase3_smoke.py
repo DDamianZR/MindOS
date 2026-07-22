@@ -110,15 +110,21 @@ def _wire_all_services(monkeypatch):
     monkeypatch.setattr(gateway_main, "rate_limiter", InMemoryRateLimiter())
 
     # Las tres apps reales, alcanzables por hostname de prueba bajo un único transporte. Tanto
-    # el proxy (SERVICE_ROUTES) como `/health` (que lee MEMORY_URL/AGENTS_URL/COMMS_URL de
-    # settings directamente, no de SERVICE_ROUTES) necesitan apuntar a los mismos hostnames.
-    apps_by_host = {"memory-svc": memory_main.app, "agents-svc": agents_main.app, "comms-svc": comms_main.app}
+    # el proxy (SERVICE_ROUTES) como `/health` (que lee MEMORY_URL/AGENTS_URL/COMMS_URL/MCP_URL
+    # de settings directamente, no de SERVICE_ROUTES) necesitan apuntar a los mismos hostnames.
+    # "mcp" no tiene una app propia en este smoke (no es parte de F3) — reusa comms_main.app,
+    # que también responde 200 en /health, suficiente para que la agregación vea "ok".
+    apps_by_host = {
+        "memory-svc": memory_main.app, "agents-svc": agents_main.app,
+        "comms-svc": comms_main.app, "mcp-svc": comms_main.app,
+    }
     monkeypatch.setattr(gateway_main.settings, "MEMORY_URL", "http://memory-svc")
     monkeypatch.setattr(gateway_main.settings, "AGENTS_URL", "http://agents-svc")
     monkeypatch.setattr(gateway_main.settings, "COMMS_URL", "http://comms-svc")
+    monkeypatch.setattr(gateway_main.settings, "MCP_URL", "http://mcp-svc")
     monkeypatch.setattr(gateway_main, "SERVICE_ROUTES", {
         "memory": "http://memory-svc", "agents": "http://agents-svc",
-        "comms": "http://comms-svc", "approvals": "http://agents-svc",
+        "comms": "http://comms-svc", "approvals": "http://agents-svc", "mcp": "http://mcp-svc",
     })
 
     async def override_gateway_http_client():
@@ -254,6 +260,6 @@ def test_gateway_health_aggregates_the_three_real_services(monkeypatch):
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["status"] == "ok"
-        assert body["downstream"] == {"memory": "ok", "agents": "ok", "comms": "ok"}
+        assert body["downstream"] == {"memory": "ok", "agents": "ok", "comms": "ok", "mcp": "ok"}
     finally:
         gateway_main.app.dependency_overrides.clear()
