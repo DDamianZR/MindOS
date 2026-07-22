@@ -31,3 +31,8 @@ class ResolveApprovalRequest(BaseModel):
 class ResolveApprovalResponse(BaseModel):
     approval: ApprovalRequestDto
     executed: bool = Field(..., description="Si la capacidad diferida se despachó realmente (solo si approved=True)")
+
+
+class ListApprovalsResponse(BaseModel):
+    """Bandeja de aprobaciones pendientes (F4-T1)."""
+    approvals: list[ApprovalRequestDto]

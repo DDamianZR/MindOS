@@ -27,6 +27,11 @@ class ApprovalPort(ABC):
         pass
 
     @abstractmethod
+    async def list_pending(self) -> list[dict[str, Any]]:
+        """Aprobaciones con `status='pending'`, más recientes primero (bandeja del Dashboard, F4-T1)."""
+        pass
+
+    @abstractmethod
     async def resolve(
         self, approval_id: UUID, status: str, result_output: str | None = None
     ) -> dict[str, Any] | None:

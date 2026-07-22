@@ -187,6 +187,12 @@ def test_service_routes_cover_expected_services(service_key, base_url_attr):
     from gateway.src.config import SERVICE_ROUTES, settings
     assert SERVICE_ROUTES[service_key] == getattr(settings, base_url_attr)
     assert SERVICE_ROUTES["approvals"] == settings.AGENTS_URL
+    # F4-T1: thinking_router.py y cognitive_router.py viven en Memory bajo su propio prefijo
+    # (/api/v1/thinking, /api/v1/cognitive), igual que approvals vive en Agents -- sin su propia
+    # entrada aquí, el Visor de razonamiento y el Panel de las 7 preguntas del Dashboard reciben
+    # 404 "Servicio desconocido" del Gateway.
+    assert SERVICE_ROUTES["thinking"] == settings.MEMORY_URL
+    assert SERVICE_ROUTES["cognitive"] == settings.MEMORY_URL
 
 
 def test_cors_allows_the_dashboard_origin_including_on_error_responses(monkeypatch):

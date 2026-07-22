@@ -5,6 +5,7 @@ no despacha nada. En ambos casos el episodio del Thinking Graph queda con su res
 (F2-T2), no congelado en 'pending_approval' para siempre.
 """
 import asyncio
+from datetime import timedelta
 
 import httpx
 from fastapi.testclient import TestClient
@@ -157,6 +158,39 @@ def test_resolving_rejected_does_not_dispatch(monkeypatch):
         agents_main.app.dependency_overrides.clear()
 
     assert episode["status"] == "rejected"
+
+
+def test_list_pending_returns_only_pending_most_recent_first(monkeypatch):
+    monkeypatch.setattr(agents_main, "approval_store", InMemoryApprovalStore())
+    store = agents_main.approval_store
+    episode_id = new_id()
+
+    first_id, second_id = new_id(), new_id()
+    asyncio.run(store.create(
+        approval_id=first_id, episode_id=episode_id, step_id=1,
+        capability_name="notify_user", inputs={},
+    ))
+    asyncio.run(store.create(
+        approval_id=second_id, episode_id=episode_id, step_id=2,
+        capability_name="delete_all_memory", inputs={},
+    ))
+    # Fuerza un orden determinista: dos `datetime.now()` consecutivos pueden empatar según la
+    # resolución del reloj, y un empate dejaría el orden sin definir (sort estable = orden de
+    # inserción, no el "más reciente primero" que se quiere probar).
+    store._approvals[first_id]["created_at"] -= timedelta(seconds=1)
+
+    agents_client = TestClient(agents_main.app)
+    resp = agents_client.get("/api/v1/approvals/")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert [a["id"] for a in body["approvals"]] == [str(second_id), str(first_id)]
+    assert all(a["status"] == "pending" for a in body["approvals"])
+
+    # Resolverla la saca de la bandeja.
+    resolve_resp = agents_client.post(f"/api/v1/approvals/{second_id}/resolve", json={"approved": False})
+    assert resolve_resp.status_code == 200, resolve_resp.text
+    after = agents_client.get("/api/v1/approvals/").json()
+    assert [a["id"] for a in after["approvals"]] == [str(first_id)]
 
 
 def test_resolving_unknown_approval_returns_404(monkeypatch):
