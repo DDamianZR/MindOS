@@ -156,6 +156,24 @@ services:
     mem_limit: 384m
     networks: [mindos-net]
 
+  # F4-T2: servidor MCP — expone MindOS como tools para asistentes externos (Claude incl.).
+  # Habla con MindOS siempre a través del Gateway (MINDOS_API_KEY), nunca directo con
+  # Memory/Agents, aunque corra en el mismo stack. Nunca se expone al host directamente: se
+  # alcanza vía Gateway (remoto) o por stdio (local, fuera de este compose).
+  mcp:
+    build:
+      context: ..
+      dockerfile: mcp_server/Dockerfile
+    container_name: mindos-mcp
+    environment:
+      MINDOS_ENV: ${MINDOS_ENV:-production}
+      GATEWAY_URL: http://gateway:8000
+      MINDOS_API_KEY: ${MINDOS_API_KEY:?La variable MINDOS_API_KEY es obligatoria (ver .env.example)}
+      MCP_API_KEY: ${MCP_API_KEY:?Genera una API key para el servidor MCP (ver .env.example)}
+    restart: unless-stopped
+    mem_limit: 256m
+    networks: [mindos-net]
+
   gateway:
     build:
       context: ..
@@ -166,6 +184,7 @@ services:
       MEMORY_URL: http://memory:8001
       AGENTS_URL: http://agents:8002
       COMMS_URL: http://comms:8003
+      MCP_URL: http://mcp:8005
       REDIS_URL: redis://redis:6379/0
       RATE_LIMITER_TYPE: redis
       RATE_LIMIT_REQUESTS: ${RATE_LIMIT_REQUESTS:-120}
@@ -180,6 +199,8 @@ services:
       agents:
         condition: service_healthy
       comms:
+        condition: service_healthy
+      mcp:
         condition: service_healthy
       redis:
         condition: service_healthy

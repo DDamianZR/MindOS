@@ -48,6 +48,6 @@ MindOS; documenta el `mcp.json` de ejemplo.
 ---
 
 ## Cierre de Fase 4
-- [ ] F4-T1 Dashboard · [ ] F4-T2 MCP · [ ] F4-T3 PWA
+- [ ] F4-T1 Dashboard · [x] F4-T2 MCP · [ ] F4-T3 PWA
 
 **Hito:** MindOS es usable por un humano (Dashboard/móvil) y por máquinas (MCP).
