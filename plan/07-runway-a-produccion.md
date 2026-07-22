@@ -142,6 +142,14 @@ sin filtrar por tipo; el nodo `outcome` no enlazaba a su episodio) — ver `plan
 
 ## 6. Stage 3 — Gateway, Auth y Comunicación (Fase 3) ⚑ PRIMER ACCESO EXTERNO
 
+✅ **Código completo** (2026-07-22): `F3-T1 … F3-T7` de [`03-gateway-comunicacion.md`](03-gateway-comunicacion.md)
+implementadas y verificadas (131/131 tests Python no-integration + 14/14 tests Node, `ruff`
+limpio). Dos servicios nuevos (`gateway/`, `comms/`) + un microservicio Node (`whatsapp/`),
+Traefik como único servicio expuesto al host en `infra/docker-compose.yml`. El smoke de cierre
+(`memory/tests/test_phase3_smoke.py`) verifica pasando por el Gateway real (autenticado):
+captura → pipeline → indexado con provenance, y resolución de aprobaciones vía
+`/api/v1/approvals/*` (Gateway lo mapea a Agents).
+
 Aquí MindOS deja de ser solo-local. **La seguridad es bloqueante en este stage.**
 
 **Antes de exponer nada**, ejecuta e implementa de la Fase 6 (aplican ya, no al final):
@@ -159,12 +167,23 @@ canales CLI/REST → mismo `MessageReceivedEvent`, WhatsApp (Baileys), pipeline 
 OCR/STT/Storage reales, mensajería saliente.
 
 ### 🚦 Deploy Gate 3 — "expuesto y seguro" (GATE DE SEGURIDAD)
-- [ ] Solo Traefik publica puertos (80/443); DB/Redis/Ollama/memory/agents no accesibles desde fuera.
-- [ ] Todo endpoint exige auth (sin token → 401); rate-limit activo; TLS válido.
-- [ ] `nmap` externo → solo 443 abierto.
-- [ ] Backup automático corriendo y **restore probado** en entorno limpio.
-- [ ] Captura por WhatsApp/CLI/REST → mismo evento → indexado con provenance; respuesta por el canal.
-- [ ] CI verde; `docker-compose.prod.yml` levanta sano en el server.
+- [x] Solo Traefik publica puertos (80/443) en `infra/docker-compose.yml`; DB/Redis/memory/agents/
+      comms/gateway sin `ports:` de host, solo alcanzables en `mindos-net`. *(pendiente: `nmap`
+      real solo se puede correr contra el server desplegado, no en este entorno de desarrollo)*
+- [x] Todo endpoint del Gateway exige auth (API key o JWT; sin ninguna → 401) y aplica rate-limit
+      por IP — verificado en `gateway/tests/test_gateway.py` y el smoke de cierre. TLS real
+      (Let's Encrypt o autofirmado) solo verificable con Traefik corriendo de verdad.
+- [ ] `nmap` externo → solo 443 abierto. *(pendiente: requiere el server real)*
+- [ ] Backup automático corriendo y **restore probado** en entorno limpio. *(Fase 6 §5, fuera del
+      alcance de F3-T1..T7 — pendiente para cuando se ejecute esa fase)*
+- [x] Captura por CLI/REST → mismo evento → indexado con provenance; verificado end-to-end en
+      `memory/tests/test_ingestion_pipeline.py` (11 tests) y el smoke de cierre. WhatsApp
+      implementado y con 14/14 tests Node, pero no verificable sin escanear un QR con un
+      teléfono real (ver `plan/NOTAS.md`, entrada F3-T4). Respuesta por el canal de origen
+      (F3-T7) verificada con dobles de prueba (`agents/tests/test_reply_to_notification.py`).
+- [ ] CI verde en el remoto (config lista en `.github/workflows/ci.yml`, incluye ahora gateway/
+      comms/whatsapp — pendiente de un push real para confirmarlo); `docker-compose.prod.yml`
+      levanta sano en el server *(pendiente: sin Docker en este entorno de desarrollo)*.
 
 ---
 
