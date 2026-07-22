@@ -189,16 +189,51 @@ OCR/STT/Storage reales, mensajería saliente.
 
 ## 7. Stage 4 — Interfaces: Dashboard, MCP, PWA (Fase 4)
 
-**Ejecuta** `F4-T1 … F4-T3` de [`04-interfaces.md`](04-interfaces.md) (descompón épicas primero).
+✅ **Código completo** (2026-07-22): `F4-T1 … F4-T3` de [`04-interfaces.md`](04-interfaces.md)
+implementadas y verificadas (161/162 tests Python no-integration, `ruff` limpio — el único
+fallo es pre-existente de F3-T6 en Windows, sin relación con esta fase, ver `plan/NOTAS.md`).
+Dashboard (`dashboard/`, Next.js 16 + Cytoscape.js) verificado **en vivo en el navegador**, no
+solo con tests — sin Docker en este entorno, se levantaron Memory/Agents/Comms/Gateway locales
+con Ollama real y se navegaron las 8 vistas autenticadas contra el Gateway real, lo que encontró
+y corrigió tres bugs reales de backend nunca antes ejercitados por un cliente externo (`/neighbors`
+solo seguía aristas salientes, el Gateway no ruteaba `thinking`/`cognitive`, precisión de
+microsegundos vs. milisegundos en el slider "as-of") y cerró un gap real (no existía forma de
+listar aprobaciones pendientes). PWA (manifest + service worker + cola offline + share_target)
+verificada por partes con la misma disciplina — ver el detalle completo en `plan/NOTAS.md`
+(entradas F4-T1 y F4-T3).
+
+**Foco:** Dashboard autenticado con JWT contra el Gateway (nunca contra Memory/Agents directo),
+servidor MCP con auth de dos capas (API key propia + Gateway detrás), PWA sin dependencias nuevas
+(`next-pwa`/Workbox no tiene compatibilidad confirmada con Turbopack — service worker escrito a mano).
+
 Añade la **observabilidad** de `06 §7` (Prometheus/Grafana, `/health` de readiness, alertas) para
-este punto: con humanos usando el Dashboard, necesitas ver métricas y errores.
+este punto: con humanos usando el Dashboard, necesitas ver métricas y errores. **No implementada
+en esta sesión** — es una adición recomendada para este stage, no parte de `F4-T1..T3`.
 
 ### 🚦 Deploy Gate 4
-- [ ] Dashboard tras el Gateway (autenticado): captura, búsqueda con citas, grafo, timeline/as-of,
+- [x] Dashboard tras el Gateway (autenticado): captura, búsqueda con citas, grafo, timeline/as-of,
       visor de `/explain`, panel de las 7 preguntas, bandejas de contradicciones y aprobaciones.
-- [ ] Servidor MCP: un cliente (p.ej. Claude Code) busca/ingiere/explica en MindOS; `mcp.json` de ejemplo documentado.
-- [ ] PWA instala y captura offline con sincronización.
-- [ ] Grafana muestra salud y uso; una caída de servicio dispara alerta.
+      Verificado en navegador con datos reales (Memory/Agents/Comms/Gateway locales + Ollama real).
+- [x] Servidor MCP: un cliente (p.ej. Claude Code) busca/ingiere/explica en MindOS; `mcp.json` de
+      ejemplo documentado (F4-T2, sesión previa — 21/21 tests + verificado contra instancia real).
+- [ ] PWA instala y captura offline con sincronización. *(parcial: manifest válido e instalable,
+      service worker registrado/activo, interceptor de share_target probado con una petición POST
+      real, cola offline probada forzando un fallo de red real (`net::ERR_CONNECTION_REFUSED`,
+      no simulado) — pero el gesto de "instalar desde el navegador" y "Compartir..." desde el
+      selector nativo del sistema operativo son acciones de UI del propio SO, fuera del alcance
+      de cualquier herramienta de automatización de navegador disponible aquí; la sincronización
+      exitosa de la cola tampoco es verificable end-to-end sin Redis real, ver nota de Comms más
+      abajo)*
+- [ ] Grafana muestra salud y uso; una caída de servicio dispara alerta. *(pendiente: `06 §7` no
+      ejecutado en esta sesión — observabilidad es una adición recomendada para este stage, no
+      parte de F4-T1..T3)*
+
+**Nota heredada de Stage 3, aplica igual aquí:** Comms sigue exigiendo Redis real para publicar
+el evento de captura (`/api/v1/comms/inbound`) — sin él en este entorno de desarrollo, la Captura
+del Dashboard y la cola offline de la PWA llegan hasta el Gateway/Comms real (confirmado con
+peticiones de red reales, no mockeadas) pero la entrega final de un mensaje capturado con éxito
+no se pudo verificar end-to-end. No es un gap de esta fase — es la misma limitación de entorno de
+Stage 3 (`memory/tests/test_ingestion_pipeline.py` sí lo cubre con Redis mockeado).
 
 ---
 
