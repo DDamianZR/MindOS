@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mindos-mcp"
+version = "1.0.0"
+description = "Servidor MCP de MindOS (F4-T2): expone búsqueda, captura, contexto GraphRAG, las 7 preguntas cognitivas y explicabilidad como tools MCP para asistentes externos (Claude incl.)."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "mcp[cli]>=1.28.0",
+    "httpx>=0.24.0",
+    "pydantic-settings>=2.0.0",
+    "uvicorn[standard]>=0.20.0",
+]
+
+# NOTA: el paquete instalable se llama "mindos_mcp", NUNCA "mcp" a secas — colisionaría con el
+# SDK oficial `mcp` (misma dependencia de este mismo proyecto). Ver plan/NOTAS.md F4-T2.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mindos_mcp*"]

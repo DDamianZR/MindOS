@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     MEMORY_URL: str = "http://localhost:8001"
     AGENTS_URL: str = "http://localhost:8002"
     COMMS_URL: str = "http://localhost:8003"
+    MCP_URL: str = "http://localhost:8005"
 
     # Event Bus (rate-limit usa Redis directamente, no CloudEvents)
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -46,4 +47,5 @@ SERVICE_ROUTES = {
     "agents": settings.AGENTS_URL,
     "comms": settings.COMMS_URL,
     "approvals": settings.AGENTS_URL,
+    "mcp": settings.MCP_URL,
 }

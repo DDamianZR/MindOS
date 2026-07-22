@@ -179,7 +179,10 @@ def test_oversized_payload_is_rejected_before_routing(monkeypatch):
         _clear_overrides()
 
 
-@pytest.mark.parametrize("service_key,base_url_attr", [("memory", "MEMORY_URL"), ("agents", "AGENTS_URL")])
+@pytest.mark.parametrize(
+    "service_key,base_url_attr",
+    [("memory", "MEMORY_URL"), ("agents", "AGENTS_URL"), ("comms", "COMMS_URL"), ("mcp", "MCP_URL")],
+)
 def test_service_routes_cover_expected_services(service_key, base_url_attr):
     from gateway.src.config import SERVICE_ROUTES, settings
     assert SERVICE_ROUTES[service_key] == getattr(settings, base_url_attr)
