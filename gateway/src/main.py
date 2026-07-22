@@ -3,6 +3,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from mindos_common.context import clear_correlation_id, get_correlation_id, set_correlation_id
 from mindos_common.ids import new_id
@@ -116,6 +117,19 @@ async def correlation_and_rate_limit_middleware(request: Request, call_next):
         clear_correlation_id(token)
 
 
+# Registrado DESPUÉS del middleware de arriba a propósito: Starlette apila los middlewares en
+# orden inverso de registro (el último añadido queda MÁS AFUERA), así que CORS queda envolviendo
+# todo — incluidas las respuestas 401/429 que emite nuestro propio middleware — y el navegador
+# recibe el header en cualquier caso, no solo en las respuestas felices.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.DASHBOARD_URL],
+    allow_credentials=False,  # auth va por header Authorization/X-Api-Key, no por cookies
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 @app.get("/health")
 async def health(http_client: httpx.AsyncClient = Depends(get_http_client)):
     """Agrega el estado de cada servicio downstream (F3-T1). Sin auth: lo consultan
@@ -127,7 +141,10 @@ async def health(http_client: httpx.AsyncClient = Depends(get_http_client)):
         except Exception as e:
             return name, f"unreachable:{type(e).__name__}"
 
-    downstream_services = {"memory": settings.MEMORY_URL, "agents": settings.AGENTS_URL, "comms": settings.COMMS_URL}
+    downstream_services = {
+        "memory": settings.MEMORY_URL, "agents": settings.AGENTS_URL,
+        "comms": settings.COMMS_URL, "mcp": settings.MCP_URL,
+    }
     results = dict(await asyncio.gather(*(_check(name, url) for name, url in downstream_services.items())))
     overall = "ok" if all(v == "ok" for v in results.values()) else "degraded"
     return {"status": overall, "service": "gateway", "downstream": results}

@@ -185,6 +185,9 @@ services:
       AGENTS_URL: http://agents:8002
       COMMS_URL: http://comms:8003
       MCP_URL: http://mcp:8005
+      # F4-T1: origen del Dashboard para CORS — en producción normalmente el mismo dominio del
+      # Gateway (Traefik enruta ambos), ajusta si el Dashboard vive en un subdominio propio.
+      DASHBOARD_URL: ${DASHBOARD_URL:-http://localhost:3000}
       REDIS_URL: redis://redis:6379/0
       RATE_LIMITER_TYPE: redis
       RATE_LIMIT_REQUESTS: ${RATE_LIMIT_REQUESTS:-120}

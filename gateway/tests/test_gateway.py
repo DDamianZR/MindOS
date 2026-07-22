@@ -127,7 +127,7 @@ def test_health_aggregates_downstream_without_requiring_auth(monkeypatch):
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["status"] == "ok"
-        assert body["downstream"] == {"memory": "ok", "agents": "ok", "comms": "ok"}
+        assert body["downstream"] == {"memory": "ok", "agents": "ok", "comms": "ok", "mcp": "ok"}
     finally:
         _clear_overrides()
 
@@ -187,3 +187,42 @@ def test_service_routes_cover_expected_services(service_key, base_url_attr):
     from gateway.src.config import SERVICE_ROUTES, settings
     assert SERVICE_ROUTES[service_key] == getattr(settings, base_url_attr)
     assert SERVICE_ROUTES["approvals"] == settings.AGENTS_URL
+
+
+def test_cors_allows_the_dashboard_origin_including_on_error_responses(monkeypatch):
+    """F4-T1: el Dashboard llama al Gateway desde su propio origen — sin el header CORS el
+    navegador bloquea la respuesta aunque la petición esté bien autenticada. Debe estar
+    presente incluso en una respuesta 401 (el navegador necesita verlo para no tratarlo como
+    un fallo de red opaco)."""
+    _patch_gateway(monkeypatch)
+    monkeypatch.setattr(gateway_main.settings, "DASHBOARD_URL", "http://localhost:3000")
+    client = TestClient(gateway_main.app)
+    try:
+        resp = client.options(
+            "/api/v1/memory/ping",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "x-api-key",
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+        unauth = client.get("/api/v1/memory/ping", headers={"Origin": "http://localhost:3000"})
+        assert unauth.status_code == 401
+        assert unauth.headers["access-control-allow-origin"] == "http://localhost:3000"
+    finally:
+        _clear_overrides()
+
+
+def test_cors_rejects_an_unconfigured_origin():
+    client = TestClient(gateway_main.app)
+    resp = client.options(
+        "/api/v1/memory/ping",
+        headers={
+            "Origin": "http://evil.example.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert "access-control-allow-origin" not in resp.headers
