@@ -47,13 +47,20 @@ from memory.src.application.services.contradiction_detector import (
     ContradictionDetectorService,
 )
 from memory.src.config import settings
+from memory.src.infrastructure.adapters.faster_whisper_stt import FasterWhisperStt
 from memory.src.infrastructure.adapters.in_memory_database import InMemoryDatabase
+from memory.src.infrastructure.adapters.in_memory_storage import InMemoryStorage
 from memory.src.infrastructure.adapters.in_memory_thinking_graph import InMemoryThinkingGraph
 from memory.src.infrastructure.adapters.in_memory_vector_store import InMemoryVectorStore
+from memory.src.infrastructure.adapters.local_fs_storage import LocalFsStorage
+from memory.src.infrastructure.adapters.minio_storage import MinioStorage
 from memory.src.infrastructure.adapters.mock_embedding import MockEmbedding
 from memory.src.infrastructure.adapters.mock_llm import MockLlm
+from memory.src.infrastructure.adapters.mock_ocr import MockOcr
+from memory.src.infrastructure.adapters.mock_stt import MockStt
 from memory.src.infrastructure.adapters.ollama_embedding import OllamaEmbedding
 from memory.src.infrastructure.adapters.ollama_llm import OllamaLlm
+from memory.src.infrastructure.adapters.tesseract_ocr import TesseractOcr
 from memory.src.infrastructure.database.repositories import PgDatabaseRepository
 from memory.src.infrastructure.database.thinking_graph_repository import PgThinkingGraphRepository
 from memory.src.infrastructure.vector.pgvector import PgVectorStoreRepository
@@ -89,6 +96,51 @@ def _make_llm():
 
 
 llm_provider = _make_llm()
+
+
+def _make_ocr():
+    """Selecciona el proveedor de OCR (F3-T6, usado por el pipeline de ingestión F3-T5): real
+    Tesseract o mock. Real requiere el binario `tesseract-ocr` (instalado en la imagen Docker)."""
+    if settings.OCR_PROVIDER == "tesseract":
+        logger.info("OCR via Tesseract", languages=settings.OCR_LANGUAGES)
+        return TesseractOcr(settings.OCR_LANGUAGES)
+    logger.info("OCR via Mock")
+    return MockOcr()
+
+
+ocr_provider = _make_ocr()
+
+
+def _make_stt():
+    """Selecciona el proveedor de STT (F3-T6, usado por el pipeline de ingestión F3-T5): real
+    faster-whisper (100% local) o mock."""
+    if settings.STT_PROVIDER == "faster_whisper":
+        logger.info("STT via faster-whisper", model_size=settings.STT_MODEL_SIZE)
+        return FasterWhisperStt(settings.STT_MODEL_SIZE)
+    logger.info("STT via Mock")
+    return MockStt()
+
+
+stt_provider = _make_stt()
+
+
+def _make_storage():
+    """Selecciona el proveedor de Storage (F3-T6, usado por el pipeline de ingestión F3-T5):
+    filesystem local, MinIO/S3, o en memoria (tests)."""
+    if settings.STORAGE_TYPE == "minio":
+        logger.info("Storage via MinIO", endpoint=settings.MINIO_ENDPOINT, bucket=settings.MINIO_BUCKET)
+        return MinioStorage(
+            endpoint=settings.MINIO_ENDPOINT, access_key=settings.MINIO_ACCESS_KEY,
+            secret_key=settings.MINIO_SECRET_KEY, bucket=settings.MINIO_BUCKET, secure=settings.MINIO_SECURE,
+        )
+    if settings.STORAGE_TYPE == "local_fs":
+        logger.info("Storage via filesystem local", base_dir=settings.STORAGE_LOCAL_DIR)
+        return LocalFsStorage(settings.STORAGE_LOCAL_DIR)
+    logger.info("Storage en memoria (tests/dev)")
+    return InMemoryStorage()
+
+
+storage_provider = _make_storage()
 
 # Bus de eventos (Redis Streams). La construcción es perezosa: no conecta hasta publicar.
 event_bus = RedisEventBus(settings.REDIS_URL)

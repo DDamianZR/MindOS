@@ -8,3 +8,12 @@ asyncpg>=0.28.0
 pgvector>=0.2.0
 greenlet
 structlog
+httpx>=0.24.0
+
+# F3-T6: adaptadores reales de OCR/STT/Storage
+pytesseract>=0.3.10
+Pillow>=10.0.0
+pypdf>=4.0.0
+pypdfium2>=4.0.0
+faster-whisper>=1.0.0
+minio>=7.2.0

@@ -72,6 +72,12 @@ services:
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-ollama}
+      # F3-T6: filesystem local es suficiente para un solo host (mono-usuario); MinioStorage
+      # queda disponible en código si más adelante se necesitan varias réplicas.
+      STORAGE_TYPE: local_fs
+      STORAGE_LOCAL_DIR: /data/storage
+    volumes:
+      - storage_data:/data/storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -222,6 +228,8 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  storage_data:
     driver: local
   traefik_certs:
     driver: local
