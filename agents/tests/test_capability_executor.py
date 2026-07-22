@@ -1,5 +1,6 @@
 """F1-T8: el Executor despacha capacidades reales vía HTTP al servicio proveedor, y respeta
 el gate de aprobación (requires_approval) sin ejecutar nada en ese caso."""
+import json
 from uuid import UUID
 
 import httpx
@@ -117,6 +118,91 @@ async def test_capability_requiring_approval_persists_a_resolvable_approval_requ
     assert stored["capability_name"] == "delete_all_memory"
     assert stored["inputs"] == {"confirm": "yes"}
     assert stored["reply_to"] == {"provider": "whatsapp", "sender_id": "5215512345678"}
+    await executor.close()
+
+
+@pytest.mark.asyncio
+async def test_approval_pause_notifies_via_comms_when_reply_to_and_comms_url_are_set():
+    """F3-T7: "una acción sensible pregunta al usuario por WhatsApp... y solo procede tras el
+    sí" — la notificación sale por /api/v1/comms/outbound apenas se crea la aprobación."""
+    outbound_calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        outbound_calls.append(request)
+        assert request.url.path == "/api/v1/comms/outbound"
+        return httpx.Response(201, json={"status": "sent", "message_id": "x", "provider": "whatsapp", "delivered": True})
+
+    registry = InMemoryCapabilityRegistry()
+    sensitive_cap = Capability(
+        name="delete_all_memory", description="Acción destructiva", parameters_schema={},
+        provider_service="memory", endpoint_path="/api/v1/memory/wipe", requires_approval=True,
+    )
+    await registry.register([sensitive_cap])
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    executor = CapabilityExecutor(registry, http_client=http_client, comms_url="http://comms:8003")
+
+    result = await executor.execute_step(
+        _step(capability_name="delete_all_memory"), {}, episode_id=new_id(),
+        reply_to={"provider": "whatsapp", "sender_id": "5215512345678"},
+    )
+
+    assert result.status == "pending_approval"
+    assert len(outbound_calls) == 1
+    body = json.loads(outbound_calls[0].content)
+    assert body["provider"] == "whatsapp"
+    assert body["recipient_id"] == "5215512345678"
+    assert "delete_all_memory" in body["text"]
+    await executor.close()
+
+
+@pytest.mark.asyncio
+async def test_approval_pause_does_not_notify_without_comms_url_or_reply_to():
+    """Preserva el comportamiento de F1-T8/F3-T1 (pausar sin notificar) para quien construya
+    el executor sin conocer comms/ (ej: los otros tests de este archivo)."""
+    def failing_handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("No debería llamarse a ningún HTTP sin comms_url configurado")
+
+    registry = InMemoryCapabilityRegistry()
+    sensitive_cap = Capability(
+        name="delete_all_memory", description="Acción destructiva", parameters_schema={},
+        provider_service="memory", endpoint_path="/api/v1/memory/wipe", requires_approval=True,
+    )
+    await registry.register([sensitive_cap])
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(failing_handler))
+    executor = CapabilityExecutor(registry, http_client=http_client)  # sin comms_url
+
+    result = await executor.execute_step(
+        _step(capability_name="delete_all_memory"), {}, episode_id=new_id(),
+        reply_to={"provider": "whatsapp", "sender_id": "5215512345678"},
+    )
+    assert result.status == "pending_approval"
+    await executor.close()
+
+
+@pytest.mark.asyncio
+async def test_approval_notification_failure_does_not_break_the_pause():
+    """Best-effort: si comms no responde, la aprobación sigue quedando creada (resoluble por
+    API igual) — perder el aviso no debe tumbar la ejecución del agente."""
+    def failing_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    registry = InMemoryCapabilityRegistry()
+    sensitive_cap = Capability(
+        name="delete_all_memory", description="Acción destructiva", parameters_schema={},
+        provider_service="memory", endpoint_path="/api/v1/memory/wipe", requires_approval=True,
+    )
+    await registry.register([sensitive_cap])
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(failing_handler))
+    executor = CapabilityExecutor(registry, http_client=http_client, comms_url="http://comms:8003")
+
+    result = await executor.execute_step(
+        _step(capability_name="delete_all_memory"), {}, episode_id=new_id(),
+        reply_to={"provider": "whatsapp", "sender_id": "5215512345678"},
+    )
+    assert result.status == "pending_approval"
     await executor.close()
 
 

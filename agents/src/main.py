@@ -138,7 +138,7 @@ async def execute_agent_goal(
     reviewer = LlmReviewer(llm)
     executor = CapabilityExecutor(
         capability_registry, service_url_resolver=resolve_service_url, http_client=http_client,
-        approval_store=approval_store,
+        approval_store=approval_store, comms_url=settings.COMMS_URL,
     )
     recorder = HttpReasoningRecorder(settings.MEMORY_URL, http_client=http_client)
 
@@ -202,6 +202,15 @@ async def execute_agent_goal(
                 step_index=final_state.get("reasoning_step_counter", 0),
             )
 
+        # F3-T7: si el goal vino de un mensaje con canal de origen, entrega el resultado por
+        # ahí (el "pending_approval" ya se notificó aparte, dentro del propio Executor, en el
+        # momento en que se creó la aprobación — notificar de nuevo aquí sería redundante).
+        if reply_to and episode_status in ("completed", "failed"):
+            await _notify_reply_to_channel(
+                http_client=http_client, reply_to=reply_to, correlation_id=corr_id,
+                text=final_state.get("final_output") or "No se pudo completar la solicitud.",
+            )
+
         # Estructurar la respuesta
         return {
             "plan_id": final_state.get("plan_id"),
@@ -226,6 +235,26 @@ async def execute_agent_goal(
         ) from e
     # Nota: no se cierra `http_client` aquí — es compartido (executor/recorder/outcome) e
     # inyectado vía `Depends(get_http_client)`; su ciclo de vida lo gestiona esa dependencia.
+
+
+async def _notify_reply_to_channel(
+    http_client: httpx.AsyncClient, reply_to: dict[str, str], text: str, correlation_id: UUID,
+) -> None:
+    """
+    F3-T7: entrega el resultado final por el canal de origen del mensaje que disparó el agente
+    (F3-T5 paso 6) — "MindOS responde por el mismo canal", no solo deja el resultado en el
+    Knowledge Graph. Best-effort: quien llamó a `/agents/execute` ya tiene su resultado por
+    HTTP de todos modos; perder esta notificación no debe romper esa respuesta.
+    """
+    try:
+        resp = await http_client.post(
+            f"{settings.COMMS_URL}/api/v1/comms/outbound",
+            headers={"X-Correlation-Id": str(correlation_id)},
+            json={"provider": reply_to["provider"], "recipient_id": reply_to["sender_id"], "text": text},
+        )
+        resp.raise_for_status()
+    except Exception as e:
+        logger.warning("No se pudo notificar el resultado final por el canal de origen", error=str(e))
 
 
 async def _record_outcome_as_knowledge(

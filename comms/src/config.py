@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     # Event Bus (F3-T3): todo mensaje entrante, sin importar el canal, se publica aquí.
     REDIS_URL: str = "redis://localhost:6379/0"
     INBOUND_STREAM: str = "mindos.comms"
+    OUTBOUND_STREAM: str = "mindos.comms.outbound"
+
+    # Mensajería saliente (F3-T7): a qué canales se puede ENTREGAR una respuesta. Solo WhatsApp
+    # tiene entrega bidireccional real hoy — CLI/REST son de solo-captura (F3-T3).
+    WHATSAPP_URL: str = "http://localhost:8004"
 
     # CLI (F3-T3): el comando `mindos capture` pasa por el Gateway como cualquier otro
     # cliente externo (único punto de entrada seguro, F3-T1) — no le da un atajo directo a comms.
