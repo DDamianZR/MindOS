@@ -1,0 +1,36 @@
+// MindOS — Vistas C4 (LikeC4)
+
+views {
+
+  // ─────────────── Nivel 1 · Diagrama de CONTEXTO ───────────────
+  // El sistema como una caja negra, con sus actores y sistemas externos.
+  view index {
+    title 'MindOS — Diagrama de contexto (C4 · Nivel 1)'
+
+    include
+      owner,
+      mindos,
+      ollama,
+      whatsapp,
+      assistants
+
+    style owner {
+      color secondary
+    }
+    style mindos {
+      color primary
+    }
+
+    autoLayout TopBottom
+  }
+
+  // ─────────────── Nivel 2 · Diagrama de CONTENEDORES ───────────────
+  // Se abre la caja de MindOS: servicios, datos y proveedores.
+  view containers of mindos {
+    title 'MindOS — Diagrama de contenedores (C4 · Nivel 2)'
+
+    include *
+
+    autoLayout TopBottom
+  }
+}

@@ -1,0 +1,182 @@
+// MindOS — Modelo C4 (LikeC4)
+//
+// Fuente de arquitectura (autoritativa):
+//   - plan/README.md  §3 "Arquitectura objetivo"  y  §1 "Decisiones de arquitectura"
+//   - MINDOS_ROADMAP.md
+//   - Servicios reales del monorepo: gateway, memory, agents, comms,
+//     whatsapp, mcp_server, dashboard, infra.
+//
+// Nivel 1 (Contexto) -> vista `index`
+// Nivel 2 (Contenedores) -> vista `containers`  (docs/c4/views.c4)
+
+specification {
+
+  element person {
+    style {
+      shape person
+      color secondary
+    }
+  }
+
+  element system {
+    style {
+      color primary
+    }
+  }
+
+  element external {
+    style {
+      shape rectangle
+      color gray
+    }
+  }
+
+  element container {
+    style {
+      color blue
+    }
+  }
+
+  element database {
+    style {
+      shape cylinder
+      color green
+    }
+  }
+}
+
+model {
+
+  // ─────────────────────────── Personas ───────────────────────────
+  owner = person 'Dueño de MindOS' {
+    description 'Usuario único (mono-usuario). Captura conocimiento, hace las 7 preguntas cognitivas y explora su grafo de conocimiento y las trazas de razonamiento.'
+  }
+
+  // ────────────────────── Sistemas externos ───────────────────────
+  ollama = external 'Ollama' {
+    description 'LLM y embeddings locales (soberanía de datos). Proveedor reemplazable vía LlmPort / EmbeddingPort.'
+    technology 'nomic-embed-text · qwen3 · llama3'
+  }
+
+  whatsapp = external 'WhatsApp' {
+    description 'Canal de mensajería que el dueño usa para capturar notas, fotos, audios y documentos.'
+  }
+
+  assistants = external 'Asistentes de IA externos' {
+    description 'Claude Desktop / Claude Code y otros clientes MCP que usan MindOS como memoria de largo plazo.'
+    technology 'Model Context Protocol (MCP)'
+  }
+
+  // ─────────────────────── El sistema: MindOS ──────────────────────
+  mindos = system 'MindOS' {
+    description 'Sistema Operativo de Conocimiento (KOS) personal: captura, versiona (nunca borra), enlaza y razona sobre el conocimiento; explica cómo pensó (Thinking Graph) y responde consultas cognitivas.'
+
+    // ───────────────── Contenedores (nivel 2) ─────────────────
+    traefik = container 'Traefik' {
+      description 'Reverse proxy: TLS, routing y rate-limit. Ingreso desde Internet / LAN.'
+      technology 'Traefik'
+      style {
+        color slate
+      }
+    }
+
+    gateway = container 'Gateway' {
+      description 'Único punto de entrada. Autenticación (JWT / API key), validación y originación del correlation-id.'
+      technology 'FastAPI'
+    }
+
+    dashboard = container 'Dashboard + PWA' {
+      description 'Explorador del grafo, timeline, visor de trazas de razonamiento, búsqueda y captura rápida offline (PWA).'
+      technology 'Next.js · Cytoscape.js'
+      style {
+        shape browser
+      }
+    }
+
+    memory = container 'Memory Service' {
+      description 'Knowledge Core + Thinking Graph: nodos versionados, relaciones bitemporales, GraphRAG con citas, consulta temporal "as-of" y las 7 preguntas cognitivas.'
+      technology 'FastAPI · SQLAlchemy'
+    }
+
+    agents = container 'Agents Service' {
+      description 'Ciclo Planner -> Executor -> Reviewer. Persiste cada episodio de razonamiento en el Thinking Graph.'
+      technology 'FastAPI · LangGraph'
+    }
+
+    comms = container 'Comms Service' {
+      description 'Pipeline de ingestión event-driven: OCR / transcripción / embedding / enlazado automático. Adaptadores de canal.'
+      technology 'FastAPI · Tesseract · faster-whisper'
+    }
+
+    whatsappBridge = container 'WhatsApp Bridge' {
+      description 'Microservicio puente: recibe mensajes de WhatsApp y los normaliza a MessageReceivedEvent.'
+      technology 'Node.js · Baileys'
+    }
+
+    mcpServer = container 'MCP Server' {
+      description 'Expone las capacidades de MindOS como tools (search, ingest, context, ask, explain) a asistentes externos. Siempre habla vía Gateway.'
+      technology 'Python MCP SDK · stdio + HTTP'
+    }
+
+    eventbus = container 'Event Bus' {
+      description 'Redis Streams: pub/sub con consumer groups y correlación. También cache y locks.'
+      technology 'Redis Streams'
+      style {
+        shape queue
+        color amber
+      }
+    }
+
+    db = database 'Base de conocimiento' {
+      description 'Nodos, versiones, relaciones bitemporales, Thinking Graph, event_log y vectores.'
+      technology 'PostgreSQL 16 + pgvector'
+    }
+
+    blobs = database 'Almacén de blobs' {
+      description 'Adjuntos originales: PDF, imágenes y audio.'
+      technology 'MinIO / FS local'
+    }
+
+    // ─────────────── Relaciones internas (nivel 2) ───────────────
+    traefik -> gateway 'Enruta con TLS (HTTP)'
+    dashboard -> gateway 'Consume la API (HTTPS/JSON)'
+    mcpServer -> gateway 'Llama a MindOS como cualquier cliente (HTTPS · API key)'
+    whatsappBridge -> gateway 'Reenvía mensajes entrantes (HTTPS/JSON)'
+
+    gateway -> memory 'Consultas y capturas de conocimiento (HTTP/JSON)'
+    gateway -> agents 'Lanza razonamiento (HTTP/JSON)'
+    gateway -> comms 'Deriva a la ingestión (HTTP/JSON)'
+
+    gateway -> eventbus 'Publica MessageReceivedEvent'
+    comms -> eventbus 'Consume eventos de mensajes'
+    memory -> eventbus 'Emite eventos de conocimiento'
+    agents -> eventbus 'Publica / consume eventos'
+
+    comms -> memory 'Almacena el conocimiento ya procesado (HTTP/JSON)'
+    comms -> blobs 'Guarda los adjuntos originales (S3 API)'
+    agents -> memory 'Lee contexto y escribe trazas (HTTP/JSON)'
+    memory -> db 'Lee/escribe conocimiento y vectores (SQL)'
+  }
+
+  // ─────────────── Relaciones de contexto (nivel 1) ────────────────
+  owner -> mindos 'Captura conocimiento, hace las 7 preguntas y explora el grafo y las trazas' {
+    technology 'CLI · REST · Dashboard · PWA'
+  }
+  owner -> whatsapp 'Envía notas, fotos, audios y documentos'
+  owner -> assistants 'Conversa'
+
+  whatsapp -> mindos 'Reenvía los mensajes para capturarlos'
+  assistants -> mindos 'Busca, captura y consulta la memoria de largo plazo' {
+    technology 'MCP'
+  }
+  mindos -> ollama 'Genera embeddings y razona / extrae' {
+    technology 'HTTP'
+  }
+
+  // ── Relaciones externas -> contenedores (para el nivel 2) ──
+  owner -> traefik 'Accede (HTTPS)'
+  whatsapp -> whatsappBridge 'Entrega mensajes (Baileys)'
+  assistants -> mcpServer 'Invoca tools (MCP: stdio / HTTP)'
+  memory -> ollama 'Embeddings y síntesis con citas (EmbeddingPort/LlmPort)'
+  agents -> ollama 'Planifica, extrae y razona (LlmPort)'
+}

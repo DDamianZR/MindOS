@@ -1,0 +1,62 @@
+name: C4 Pages
+
+# Construye el sitio C4 (LikeC4) y lo publica en GitHub Pages.
+# Requisito único en GitHub: Settings -> Pages -> Source = "GitHub Actions".
+# Ver docs/c4/README.md para los pasos de activación.
+
+on:
+  push:
+    branches: [docs/c4-context, main, master]
+    paths:
+      - "docs/c4/**"
+      - ".github/workflows/c4-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Permite una sola publicación concurrente sin cancelar la que esté en curso.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # `base_path` resuelve el subpath del repo (p. ej. /mi-repo/) para project pages.
+      # Si hay dominio propio, cae a "/".
+      - name: Construir sitio LikeC4
+        run: >-
+          npx -y likec4@latest build
+          --base "${{ steps.pages.outputs.base_path || '/' }}"
+          --output dist
+          docs/c4
+
+      - name: Subir artefacto de Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publicar en GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
