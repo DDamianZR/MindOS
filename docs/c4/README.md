@@ -1,5 +1,7 @@
 # MindOS — Diagramas C4 (LikeC4)
 
+**🔗 Publicado en GitHub Pages:** https://ddamianzr.github.io/MindOS/
+
 Modelo [C4](https://c4model.com/) de MindOS escrito en [LikeC4](https://likec4.dev/).
 Genera un sitio **estático e interactivo** (pan/zoom, navegación entre niveles, tema
 claro/oscuro, export a PNG/Mermaid/PlantUML/D2) que se publica en **GitHub Pages**.
