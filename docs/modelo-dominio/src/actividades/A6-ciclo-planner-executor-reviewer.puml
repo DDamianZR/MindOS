@@ -1,0 +1,95 @@
+@startuml A6-ciclo-planner-executor-reviewer
+!include ../_tema.iuml
+title A6 · Algoritmo de IA: ciclo de agente Planner → Executor → Reviewer (LangGraph) con registro en el Thinking Graph
+
+|Agents|
+start
+:POST /agents/execute (goal, correlation_id?, reply_to?);
+
+|Memory|
+:Obtener contexto GraphRAG (limit 3, depth 1) → ver **A5**;
+note right: Si Memory no responde, el contexto\nes "no disponible" y se sigue.
+
+|Agents|
+:Cargar capacidades del registro\n(si está vacío, registrar **search_knowledge**);
+:Estado inicial: pasos = [], reintentos = 0, **máx. reintentos = 3**;
+
+repeat
+  '--- Nodo plan_step
+    if (¿Primer plan?) then (sí)
+      |Memory|
+      :Crear **EpisodioRazonamiento** (id = correlation_id);
+      |Agents|
+    endif
+    :Si hay feedback previo, **añadirlo al contexto**\n("[ATENCIÓN – Feedback de Error Anterior]");
+    :**LLM Planner** (JSON): descompone la meta en pasos\ncon capacidad y salida esperada;
+    |Memory|
+    :Registrar paso **plan** (o **replan**);
+    |Agents|
+    note right
+      Observación: no hay arista condicional tras plan_step;
+      si la planificación falla, el grafo igual avanza a
+      execute_step con la lista de pasos vacía.
+    end note
+
+  repeat
+  '--- Nodo execute_step
+      :Tomar el paso actual → estado = running;
+      :**Executor** despacha la capacidad → ver **A7** si\nrequiere aprobación;
+      |Memory|
+      :Registrar paso **execute**\n(capacidad, salida, nodos citados);
+      |Agents|
+
+    if (¿Paso en **pending_approval**?) then (sí)
+      :Guardar salida "Ejecución pausada…";
+      break
+    endif
+  '--- Nodo review_step
+      :**LLM Reviewer** (JSON): compara salida real\nvs. salida esperada → {aprobado, feedback};
+      |Memory|
+      :Registrar paso **review**;
+      |Agents|
+      if (¿Aprobado?) then (sí)
+        :Avanzar al siguiente paso;
+        if (¿Era el último?) then (sí)
+          :salida_final = salida del último paso;
+        endif
+      else (no)
+        :reintentos += 1;
+        if (¿reintentos ≥ 3?) then (sí)
+          :error = "máximo de reintentos alcanzado";\nsalida_final = mensaje de error;
+        else (no)
+          :feedback = "paso rechazado + corrección";
+        endif
+      endif
+  repeat while (¿Sin error, sin feedback\ny quedan pasos?) is (continuar) not (salir)
+repeat while (¿Hay feedback y no error?) is (**replanificar**) not (fin)
+  '--- Cierre del episodio
+  if (¿error?) then (sí)
+    :estado = **failed**;
+  elseif (¿Algún paso pending_approval?) then (sí)
+    :estado = **pending_approval**;
+  else (no)
+    :estado = **completed**;
+  endif
+  |Memory|
+  :Cerrar episodio con su estado y salida final;
+  |Agents|
+
+if (¿completed **y** hay salida final?) then (sí)
+  |Memory|
+  :Ingerir nodo **outcome** (autor AgentsService)\ncon la evidencia = nodos de contexto;
+  :Crear aristas **EVIDENCES** (contexto → outcome);
+  :Registrar paso **conclude** con el nodo creado;
+  |Agents|
+endif
+
+if (¿Hay reply_to **y** estado ∈ {completed, failed}?) then (sí)
+  |Comms|
+  :POST /comms/outbound → el usuario recibe\nel resultado por su canal de origen;
+  |Agents|
+endif
+
+:Responder {plan_id, goal, pasos, salida, correlation_id};
+stop
+@enduml

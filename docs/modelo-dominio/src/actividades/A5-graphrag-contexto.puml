@@ -1,0 +1,51 @@
+@startuml A5-graphrag-contexto
+!include ../_tema.iuml
+title A5 · Algoritmo de IA: construcción de contexto GraphRAG citable (ContextBuilder v2, F1-T7)
+
+start
+:Entrada: consulta, límite (def. 5), profundidad (def. 1);
+:Embedding de la consulta;
+
+partition "1 · Semillas por similitud vectorial" {
+  :Buscar top-**límite** en el vector store;
+  :candidatos[id] = (similitud, via_graph = falso);
+}
+
+partition "2 · Expansión por grafo" {
+  while (¿Quedan semillas?) is (sí)
+    :Consultar relaciones recursivas desde la semilla\n(CTE hasta **profundidad**);
+    :Deduplicar aristas vistas;
+    :similitud_heredada = similitud_semilla × **0.7**;
+    if (¿Destino no era candidato,\no la heredada supera su similitud?) then (sí)
+      :candidatos[destino] = (heredada, via_graph = verdadero\nsi era nuevo);
+    endif
+  endwhile (no)
+  note right
+    Un nodo conectado a algo relevante también es candidato,
+    aunque no haya coincidido con el vector. La expansión solo
+    AÑADE o mejora puntajes; nunca degrada un hit directo.
+  end note
+}
+
+partition "3 · Reranking" {
+  while (¿Quedan candidatos?) is (sí)
+    :Obtener versión vigente\n(excluye archivados por defecto);
+    if (¿Sin versión vigente?) then (sí)
+      :Omitir;
+    else (no)
+      :recencia = 0.5 ^ (edad_días / 30);
+      :**puntaje** = 0.50·similitud + 0.20·importancia\n+ 0.15·recencia + 0.15·confianza;
+    endif
+  endwhile (no)
+  :Ordenar por puntaje descendente y **truncar a límite**;
+}
+
+partition "4 · Ensamblado citable" {
+  :Asignar etiquetas de cita **n1, n2, …** a cada fragmento\n(con nodo, versión y fuente de origen);
+  :Línea temporal: fragmentos finales ordenados por fecha\n(máx. 5 hitos);
+  :Relaciones legibles "A ==[TIPO]==> B" con al menos\nun extremo en los fragmentos finales;
+}
+
+:Devolver **ContextBundle**\n→ to_prompt() lo serializa para el LLM e instruye\na citar "según [n1]…";
+stop
+@enduml

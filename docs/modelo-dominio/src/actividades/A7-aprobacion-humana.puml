@@ -1,0 +1,69 @@
+@startuml A7-aprobacion-humana
+!include ../_tema.iuml
+title A7 · Proceso de negocio: acción sensible con aprobación humana (human-in-the-loop, F1-T8 / F3-T1 / F3-T7)
+
+|Agent Executor|
+start
+:Recibe un paso del plan para ejecutar;
+if (¿El paso especifica una capacidad?) then (no)
+  :Resultado = failed\n("no especifica capacidad");
+  stop
+endif
+if (¿La capacidad está en el registro?) then (no)
+  :Resultado = failed\n("capacidad no registrada");
+  stop
+endif
+
+if (¿Capacidad con **requiere_aprobación**?) then (no)
+  :Despachar la capacidad\n(HTTP real, mock de test o simulación);
+  :Resultado = completed | failed;
+  stop
+else (sí)
+endif
+
+:Crear **SolicitudAprobacion** (pending)\ncon capacidad, entradas originales y reply_to;
+if (¿Hay canal de origen (reply_to)?) then (sí)
+  |Comms|
+  :Notificar por el canal:\n"MindOS necesita tu aprobación para '<capacidad>'.\nID de la solicitud: …";
+  note right: Best-effort: perder el aviso no\ntumba la ejecución del agente.
+endif
+|Agent Executor|
+:Resultado = **pending_approval**\n→ el grafo del agente se detiene (ver A6);\nel episodio queda en pending_approval;
+
+|Usuario|
+:Ve la bandeja de pendientes (Dashboard)\no recibe el aviso en su canal;
+:Decide **aprobar** o **rechazar**;
+
+|Gateway|
+:POST /approvals/{id}/resolve\n(autenticado: JWT / API key);
+
+|Agent Executor|
+if (¿Solicitud inexistente?) then (sí)
+  :404;
+  stop
+elseif (¿Ya estaba resuelta?) then (sí)
+  :409 Conflict;
+  stop
+endif
+
+if (¿Aprobada?) then (sí)
+  :Ejecutar la capacidad con las **entradas originales**\n(sin plan en curso: ejecución por nombre);
+  if (¿Terminó en completed?) then (sí)
+    :executed = true;\nepisodio → **completed**;
+  else (no)
+    :executed = false;\nepisodio → **failed**;
+  endif
+else (no)
+  :Resultado = "Rechazada por el usuario;\nla capacidad no se ejecutó";\nepisodio → **rejected**;
+endif
+
+:Solicitud → approved | rejected\n(con resultado y fecha de resolución);
+
+|Memory|
+:Registrar un paso **execute** de resolución\n(aprobado sí/no) en el episodio;
+:Cerrar el episodio con su estado final;
+
+|Usuario|
+:Obtiene el resultado de la resolución;
+stop
+@enduml

@@ -1,0 +1,37 @@
+@startuml A4-auto-enlazado
+!include ../_tema.iuml
+title A4 · Algoritmo de IA: auto-enlazado de conocimiento por similitud + confirmación del LLM (F3-T5, paso 4)
+
+start
+:Entrada: nodo recién ingerido (id, texto);
+:POST /memory/search con el texto\n(limit = top-k 3 + 1);
+if (¿La búsqueda falló?) then (sí)
+  :Advertir y terminar sin enlazar;
+  stop
+else (no)
+endif
+
+while (¿Quedan candidatos?) is (sí)
+  :Tomar candidato C;
+  if (¿C es el mismo nodo, o score < 0.65?) then (sí)
+    :Descartar;
+  else (no)
+    :**LLM (JSON mode)**: ¿hay una relación genuina\n(no solo palabras en común)? Clasificar con UNA etiqueta\nde {RELATED_TO, PART_OF, MENTIONS,\nCAUSED_BY, DERIVED_FROM, LEADS_TO};
+    if (¿related = true **y** la etiqueta está\nen el catálogo permitido?) then (sí)
+      :POST /memory/relation (nuevo → C, tipo);
+      note right
+        Se excluyen a propósito CONTRADICTS (A3),
+        DUPLICATE_OF (A2) y EVIDENCES / DECIDES /
+        ANSWERS (Thinking Graph): cada uno
+        tiene su propio mecanismo.
+      end note
+      if (¿Falló la creación?) then (sí)
+        :Advertir y continuar;
+      endif
+    else (no)
+      :Descartar (incluye LLM caído o JSON inválido);
+    endif
+  endif
+endwhile (no)
+stop
+@enduml

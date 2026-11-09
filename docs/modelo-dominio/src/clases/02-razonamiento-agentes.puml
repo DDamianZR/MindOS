@@ -1,0 +1,169 @@
+@startuml 02-razonamiento-agentes
+!include ../_tema.iuml
+title Dominio de Razonamiento — Thinking Graph, agentes y aprobaciones (servicios Memory y Agents)
+hide empty members
+
+package "Thinking Graph (persistido en Memory)" #F8FAFC {
+  class EpisodioRazonamiento <<aggregate root>> {
+    + id : UUID <<= correlationId>>
+    + meta : str
+    + correlationId : UUID
+    + agente : str
+    + estado : EpisodeStatus
+    + iniciadoEn : datetime
+    + terminadoEn : datetime?
+    + salidaFinal : str?
+    --
+    + agregarPaso(paso)
+    + cerrar(estado, salidaFinal)
+  }
+
+  class PasoRazonamiento {
+    + id : UUID
+    + indice : int
+    + tipo : StepKind
+    + entrada : str?
+    + salida : str?
+    + capacidad : str?
+    + aprobado : bool?
+    + feedback : str?
+    + creadoEn : datetime
+    + nodosCitados : UUID[]
+  }
+
+  enum StepKind {
+    plan
+    execute
+    review
+    replan
+    conclude
+  }
+
+  enum EpisodeStatus {
+    running
+    completed
+    failed
+    pending_approval
+    rejected
+  }
+}
+
+package "Planificación (servicio Agents)" #F8FAFC {
+  class Plan {
+    + planId : UUID
+    + meta : str
+  }
+
+  class PasoPlan {
+    + pasoId : int
+    + tarea : str
+    + capacidad : str?
+    + salidaEsperada : str
+    + estado : pending | running | completed |\nfailed | pending_approval
+    + salidaReal : str?
+  }
+
+  class Capacidad <<registry>> {
+    + nombre : str {único}
+    + descripcion : str
+    + esquemaParametros : JSON Schema
+    + servicioProveedor : str
+    + rutaEndpoint : str
+    + requiereAprobacion : bool
+  }
+
+  class SolicitudAprobacion <<aggregate root>> {
+    + id : UUID
+    + episodioId : UUID
+    + pasoId : int
+    + capacidad : str
+    + entradas : dict
+    + estado : pending | approved | rejected
+    + responderA : (canal, remitente)?
+    + creadaEn : datetime
+    + resueltaEn : datetime?
+    + resultado : str?
+    --
+    + resolver(aprobada : bool)
+  }
+}
+
+package "Agentes (LangGraph)" #F8FAFC {
+  interface Planner <<domain service>> {
+    + plan(meta, contexto, capacidades) : Plan
+  }
+  interface Executor <<domain service>> {
+    + ejecutarPaso(paso, entradas, episodio, responderA) : ResultadoEjecucion
+  }
+  interface Reviewer <<domain service>> {
+    + revisarPaso(tarea, esperado, real) : Revision
+  }
+  class LlmPlanner
+  class LlmReviewer
+  class CapabilityExecutor {
+    - despachar(capacidad, entradas)
+    - notificarAprobacionPendiente()
+    + ejecutarCapacidadPorNombre()
+  }
+  class GrafoPlannerExecutorReviewer <<LangGraph StateGraph>> {
+    nodos: plan_step, execute_step, review_step
+    + invocar(estado) : EstadoAgente
+  }
+  class EstadoAgente <<value object>> {
+    meta, contexto, planId
+    pasos : PasoPlan[]
+    pasoActual : int
+    reintentos / maxReintentos = 3
+    feedback, error, salidaFinal
+    contadorPasosRazonamiento : int
+    nodosContexto : UUID[]
+    responderA : (canal, remitente)?
+  }
+  class ResultadoEjecucion <<value object>> {
+    salida : str
+    estado : completed | failed | pending_approval
+  }
+  class Revision <<value object>> {
+    aprobada : bool
+    feedback : str?
+  }
+}
+
+EpisodioRazonamiento "1" *-- "0..*" PasoRazonamiento : pasos ordenados\npor índice
+PasoRazonamiento --> StepKind
+EpisodioRazonamiento --> EpisodeStatus
+
+Plan "1" *-- "1..*" PasoPlan
+PasoPlan "0..*" --> "0..1" Capacidad : recomienda
+SolicitudAprobacion "0..*" --> "1" EpisodioRazonamiento : pausa a
+SolicitudAprobacion "0..*" --> "1" Capacidad : difiere ejecución de
+
+Planner <|.. LlmPlanner
+Reviewer <|.. LlmReviewer
+Executor <|.. CapabilityExecutor
+GrafoPlannerExecutorReviewer o-- Planner
+GrafoPlannerExecutorReviewer o-- Executor
+GrafoPlannerExecutorReviewer o-- Reviewer
+GrafoPlannerExecutorReviewer ..> EstadoAgente : propaga
+EstadoAgente o-- "0..*" PasoPlan
+Executor ..> ResultadoEjecucion
+Reviewer ..> Revision
+CapabilityExecutor ..> Capacidad : consulta registro
+CapabilityExecutor ..> SolicitudAprobacion : crea si\nrequiereAprobacion
+GrafoPlannerExecutorReviewer ..> EpisodioRazonamiento : registra vía\nReasoningRecorderPort\n(HTTP → Memory)
+
+note right of PasoRazonamiento
+  El episodio registra el PROCESO (cómo se llegó a algo);
+  los Objetos Cognitivos registran el RESULTADO (qué se sabe).
+  nodosCitados enlaza ambos mundos: es lo que permite que
+  /explain muestre qué corrida de agente produjo un nodo.
+end note
+
+note bottom of SolicitudAprobacion
+  Human-in-the-loop: una capacidad con requiereAprobacion
+  nunca se despacha hasta que el usuario la resuelve
+  (Gateway → Agents). Al aprobarse se ejecuta con las
+  entradas originales y el episodio se cierra como
+  completed / failed; al rechazarse, como rejected.
+end note
+@enduml
