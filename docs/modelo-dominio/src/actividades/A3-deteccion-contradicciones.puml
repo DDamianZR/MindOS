@@ -1,0 +1,55 @@
+@startuml A3-deteccion-contradicciones
+!include ../_tema.iuml
+title A3 · Algoritmo de IA: detección de contradicciones con doble compuerta (F2-T5)
+
+start
+:Entrada: nodo N (recién ingerido, o recorrido en **modo batch**\nsobre los 200 nodos activos más recientes);
+:Obtener la versión vigente de N;
+if (¿Existe?) then (no)
+  :Devolver lista vacía;
+  stop
+else (sí)
+endif
+
+:Embedding del contenido de N;
+:Buscar los **top-k = 5 (+1)** vecinos semánticos\nen el vector store;
+
+while (¿Quedan candidatos?) is (sí)
+  :Tomar siguiente candidato C;
+  if (¿C = N, o similitud < 0.65?) then (sí)
+    :Descartar;
+    note right
+      **Compuerta 1 — filtro barato**:
+      sin relación temática no hay
+      nada que contradecir.
+    end note
+  else (no)
+    :Obtener versión vigente de C;
+    if (¿C no existe o su tipo ∉ {fact, hypothesis}?) then (sí)
+      :Descartar\n(no comparable: evita CONTRADICTS espurios);
+    else (no)
+      :**LLM (JSON mode)**:\n"¿A y B no pueden ser ambas ciertas a la vez?";
+      note right
+        **Compuerta 2 — juicio lógico**:
+        la similitud coseno NO distingue
+        "mismo tema compatible" de
+        "mismo tema contradictorio"
+        (ambos ~0.77–0.90).
+      end note
+      if (¿LLM falló o devolvió JSON inválido?) then (sí)
+        :contradice = falso\n(**falla cerrado**: mejor falso negativo\nque falso positivo auditable);
+      else (no)
+        :Leer {contradice, razón, confianza};
+      endif
+      if (¿contradice?) then (sí)
+        :Crear arista **CONTRADICTS** (N → C)\ncon razón y confianza en metadata;
+        :Agregar a "detectadas";
+      endif
+    endif
+  endif
+endwhile (no)
+
+:Para cada contradicción detectada:\nregistrar **contradiction.detected** en event_log,\nCOMMIT y publicar en **mindos.memory**;
+:Devolver contradicciones detectadas;
+stop
+@enduml

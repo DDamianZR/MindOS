@@ -1,0 +1,118 @@
+@startuml 03-comunicacion-eventos
+!include ../_tema.iuml
+title Dominio de Comunicación y Eventos (servicios Comms y Event Bus)
+hide empty members
+
+package "Comunicación" #F8FAFC {
+  class MensajeEntrante <<event payload>> {
+    + mensajeId : str
+    + remitenteId : str
+    + destinatarioId : str
+    + canal : str
+    + texto : str
+    + mediaUrl : str?
+    + metadata : dict
+    --
+    metadata.media_kind: image | audio | document
+    metadata.mimetype
+    metadata.media_base64
+  }
+
+  class MensajeSaliente <<event payload>> {
+    + mensajeId : str
+    + destinatarioId : str
+    + canal : str
+    + texto : str
+    + estado : sent | delivered | failed
+    + error : str?
+  }
+
+  interface CommunicationInboundPort {
+    + recibir(canal, remitente, destinatario,\ntexto, mensajeId, mediaUrl, metadata) : mensajeId
+  }
+  interface CommunicationOutboundPort {
+    + enviar(destinatarioId, texto) : detallesEntrega
+  }
+
+  class "Canal CLI" as CanalCLI <<adapter>>
+  class "Canal REST" as CanalREST <<adapter>>
+  class "Canal WhatsApp (Baileys)" as CanalWA <<adapter>>
+}
+
+package "Eventos de dominio (CloudEvents 1.0)" #F8FAFC {
+  class "CloudEvent<T>" as CloudEvent {
+    + specversion = "1.0"
+    + id : UUID <<uuid7>>
+    + source : str
+    + type : str
+    + time : datetime (UTC)
+    + datacontenttype = application/json
+    + data : T
+    + correlationId : UUID <<uuid7>>
+  }
+
+  class KnowledgeCreated {
+    nodoId, tipoObjeto, version=1,\ntitulo, autor
+  }
+  class KnowledgeUpdated {
+    nodoId, version, titulo, autor,\nversionPadreId
+  }
+  class KnowledgeArchived {
+    nodoId   «también .restored»
+  }
+  class RelationCreated {
+    origenId, destinoId, tipoRelacion, metadata
+  }
+  class RelationDeleted {
+    origenId, destinoId, tipoRelacion
+  }
+  class ContradictionDetected {
+    nodoAId, nodoBId, razon, confianza
+  }
+}
+
+package "Streams del Event Bus (Redis Streams)" #F8FAFC {
+  class "mindos.comms" as StreamComms <<stream>>
+  class "mindos.memory" as StreamMemory <<stream>>
+}
+
+CommunicationInboundPort <|.. CanalCLI
+CommunicationInboundPort <|.. CanalREST
+CommunicationInboundPort <|.. CanalWA
+CommunicationOutboundPort <|.. CanalWA
+
+CanalCLI ..> MensajeEntrante : normaliza a
+CanalREST ..> MensajeEntrante : normaliza a
+CanalWA ..> MensajeEntrante : normaliza a
+CanalWA ..> MensajeSaliente : produce al entregar
+
+CloudEvent "1" o-- "1" MensajeEntrante : data\ncom.mindos.communication.message.received
+CloudEvent "1" o-- "1" MensajeSaliente : data\ncom.mindos.communication.message.sent
+CloudEvent "1" o-- "1" KnowledgeCreated : data\ncom.mindos.memory.knowledge.created
+CloudEvent "1" o-- "1" KnowledgeUpdated : data\n….knowledge.updated
+CloudEvent "1" o-- "1" KnowledgeArchived : data\n….knowledge.archived / restored
+CloudEvent "1" o-- "1" RelationCreated : data\n….relation.created
+CloudEvent "1" o-- "1" RelationDeleted : data\n….relation.deleted
+CloudEvent "1" o-- "1" ContradictionDetected : data\n….contradiction.detected
+
+MensajeEntrante ..> StreamComms : publicado en
+MensajeSaliente ..> StreamComms : publicado en
+KnowledgeCreated ..> StreamMemory : publicado en
+KnowledgeUpdated ..> StreamMemory
+KnowledgeArchived ..> StreamMemory
+RelationCreated ..> StreamMemory
+RelationDeleted ..> StreamMemory
+ContradictionDetected ..> StreamMemory
+
+note bottom of CloudEvent
+  Todo evento lleva correlationId: permite seguir una misma captura a través de
+  Comms → Memory → Agents → Comms. Los eventos de memoria además se persisten
+  en knowledge_event_log (misma transacción que el conocimiento) antes de publicarse,
+  y la publicación al bus es best-effort.
+end note
+
+note right of MensajeEntrante
+  Los 3 canales producen el mismo evento: capturar por CLI,
+  REST o WhatsApp es indistinguible para el resto del sistema.
+end note
+@enduml
