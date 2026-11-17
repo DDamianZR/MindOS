@@ -45,7 +45,7 @@ Cada fase vive en su propio archivo y se ejecuta **en orden**. No saltes fases.
 | ORM | **SQLAlchemy 2.0 async**. | Ya en uso. |
 | Bus de eventos | **Redis Streams** (ya implementado en `common`). | Consumer groups + correlación. |
 | Cache/locks | **Redis**. | Ya presente. |
-| LLM | **Ollama** local vía `LlmPort`. | Soberanía; proveedor reemplazable. |
+| LLM | **Claude Sonnet 5.5** vía API para el asistente y el razonamiento; **Ollama** solo para embeddings (y como alternativa 100 % local con `LLM_PROVIDER=ollama`). | Cambiado en la Fase 7: ver [`08-asistente-personal-claude.md`](08-asistente-personal-claude.md) para el motivo y el costo de privacidad que se acepta. |
 | Embeddings | **nomic-embed-text (768 dim)** vía Ollama. | Descargado y verificado. `bge-m3` (1024, multilingüe) = upgrade opcional. |
 | Agentes | **LangGraph**. | Ya en uso. |
 | Gateway | Servicio **FastAPI** (BFF + auth) detrás de **Traefik** (TLS/routing en el server). | Punto de entrada único de la visión. |
@@ -138,6 +138,7 @@ Regla de oro: **nada accede a la infraestructura directamente**; todo pasa por e
 | **4 · Interfaces** | [`04-interfaces.md`](04-interfaces.md) | Dashboard (grafo/timeline/trazas), servidor MCP, PWA de captura. | ⏳ depende de 2, 3 |
 | **5 · Automatización** | [`05-automatizacion.md`](05-automatizacion.md) | Reflexión/consolidación, resurfacing, investigación, lifecycle. | ⏳ depende de 2 |
 | **6 · Producción y despliegue** | [`06-produccion-despliegue.md`](06-produccion-despliegue.md) | Hardening, Docker stack completo, deploy al server, backups, observabilidad, CI/CD. | ⏳ incremental (0→5) |
+| **7 · Asistente personal (Claude)** | [`08-asistente-personal-claude.md`](08-asistente-personal-claude.md) | Asistente conversacional sobre Claude Sonnet 5.5, streaming por el Gateway, vista Asistente y sistema visual. | 🟡 F7-T1..T6 hechas; falta verificación con API key real (F7-T7) |
 | **▶ Runway de ejecución** | [`07-runway-a-produccion.md`](07-runway-a-produccion.md) | Secuencia maestra: stages + puertas de despliegue + protocolo de ejecución. | **empieza aquí** |
 
 > **Nivel de detalle:** las fases 0-2 están a nivel de tarea atómica (near-term, máxima precisión).

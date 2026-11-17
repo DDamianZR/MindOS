@@ -1,10 +1,12 @@
 import asyncio
+import json
+from collections.abc import Callable
 from uuid import UUID
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from mindos_common.context import clear_correlation_id, get_correlation_id, set_correlation_id
 from mindos_common.ids import new_id
 from mindos_common.logging import configure_logging, get_logger
@@ -46,6 +48,22 @@ async def get_http_client():
     """Cliente HTTP compartido hacia los servicios downstream, inyectado vía `Depends`."""
     async with httpx.AsyncClient(timeout=30.0) as client:
         yield client
+
+
+def _new_stream_http_client() -> httpx.AsyncClient:
+    # Sin timeout de lectura: entre dos eventos de un stream puede pasar mucho más que los 30 s
+    # del cliente normal (el modelo razonando, una herramienta lenta). Conectar sí tiene tope.
+    return httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=None))
+
+
+def get_stream_client_factory() -> Callable[[], httpx.AsyncClient]:
+    """
+    Fábrica del cliente HTTP para respuestas en streaming (F7-T5). No se reutiliza el de
+    `get_http_client`: ese se cierra cuando la función de la ruta devuelve, y un stream sigue
+    leyendo del downstream después de eso. Aquí quien abre el cliente lo cierra al terminar
+    el stream. Es una dependencia para que los tests inyecten un transporte simulado.
+    """
+    return _new_stream_http_client
 
 
 async def require_auth(request: Request) -> str:
@@ -190,12 +208,16 @@ async def proxy(
     rest_of_path: str,
     request: Request,
     http_client: httpx.AsyncClient = Depends(get_http_client),
+    stream_client_factory: Callable[[], httpx.AsyncClient] = Depends(get_stream_client_factory),
     _identity: str = Depends(require_auth),
 ):
     """
     Routing/proxy (F3-T1): `/api/v1/{memory|agents|comms|approvals}/...` reenviado sin
     transformar al servicio interno correspondiente. Ninguno de esos servicios se expone
     directamente — este es el único punto de entrada autenticado.
+
+    Si el cliente pide `Accept: text/event-stream` (F7-T5, el chat del asistente), la respuesta
+    del downstream se reenvía evento a evento en vez de bufferizarse entera.
     """
     base_url = SERVICE_ROUTES.get(service_key)
     if not base_url:
@@ -207,6 +229,12 @@ async def proxy(
     forward_headers["X-Correlation-Id"] = str(get_correlation_id())
 
     downstream_url = f"{base_url.rstrip('/')}/api/v1/{service_key}/{rest_of_path}"
+
+    if "text/event-stream" in request.headers.get("accept", ""):
+        return await _proxy_stream(
+            stream_client_factory(), request, service_key, downstream_url, body, forward_headers
+        )
+
     try:
         downstream_resp = await http_client.request(
             request.method, downstream_url, params=request.query_params,
@@ -224,6 +252,69 @@ async def proxy(
     return Response(
         content=downstream_resp.content, status_code=downstream_resp.status_code,
         headers=response_headers, media_type=downstream_resp.headers.get("content-type"),
+    )
+
+async def _proxy_stream(
+    client: httpx.AsyncClient,
+    request: Request,
+    service_key: str,
+    downstream_url: str,
+    body: bytes,
+    forward_headers: dict[str, str],
+) -> Response:
+    """
+    Reenvía una respuesta `text/event-stream` del downstream sin bufferizarla (F7-T5). Si el
+    downstream responde otra cosa (un 404/422 en JSON, por ejemplo) se devuelve entera, igual
+    que el proxy normal: el cliente recibe el mismo error de siempre, no un stream vacío.
+    """
+    try:
+        downstream_req = client.build_request(
+            request.method, downstream_url, params=request.query_params,
+            content=body, headers=forward_headers,
+        )
+        downstream_resp = await client.send(downstream_req, stream=True)
+    except httpx.RequestError as e:
+        await client.aclose()
+        logger.error("Servicio downstream inalcanzable", service=service_key, url=downstream_url, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=f"No se pudo contactar al servicio '{service_key}'."
+        ) from e
+
+    # `aiter_bytes`/`aread` entregan el cuerpo ya decodificado, así que `content-encoding` no
+    # se reenvía (el navegador intentaría descomprimir algo que ya no está comprimido).
+    response_headers = {
+        k: v for k, v in downstream_resp.headers.items()
+        if k.lower() not in _HOP_BY_HOP_HEADERS and k.lower() != "content-encoding"
+    }
+    content_type = downstream_resp.headers.get("content-type", "")
+
+    if not content_type.startswith("text/event-stream"):
+        try:
+            content = await downstream_resp.aread()
+        finally:
+            await downstream_resp.aclose()
+            await client.aclose()
+        return Response(
+            content=content, status_code=downstream_resp.status_code,
+            headers=response_headers, media_type=content_type or None,
+        )
+
+    async def relay():
+        try:
+            async for chunk in downstream_resp.aiter_bytes():
+                yield chunk
+        except httpx.HTTPError as e:
+            # El status 200 ya salió: lo único que queda es avisar dentro del propio stream.
+            logger.error("Stream del downstream interrumpido", service=service_key, error=str(e))
+            detail = {"type": "error", "message": "Se perdió la conexión con el servicio a mitad de la respuesta."}
+            yield f"event: error\ndata: {json.dumps(detail, ensure_ascii=False)}\n\n".encode()
+        finally:
+            await downstream_resp.aclose()
+            await client.aclose()
+
+    return StreamingResponse(
+        relay(), status_code=downstream_resp.status_code,
+        headers=response_headers, media_type=content_type,
     )
 
 # Fin del módulo main

@@ -104,6 +104,13 @@ services:
       REDIS_URL: redis://redis:6379/0
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${LLM_MODEL_REASONING:-qwen3:8b}
+      # Fase 7: asistente personal y razonamiento sobre la API de Claude. Sin ANTHROPIC_API_KEY
+      # el asistente queda en modo demostración y Planner/Reviewer siguen en Ollama.
+      LLM_PROVIDER: ${LLM_PROVIDER:-auto}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5-5}
+      ASSISTANT_EFFORT: ${ASSISTANT_EFFORT:-low}
+      MINDOS_OWNER_NAME: ${MINDOS_OWNER_NAME:-}
       # F3-T7: a dónde notificar (aprobaciones pendientes, respuesta final) cuando el goal
       # vino de un mensaje con canal de origen.
       COMMS_URL: http://comms:8003
