@@ -176,3 +176,42 @@ Formato por entrada:
 - **Efecto secundario positivo:** el fix del guard de auth para F4-T3 (conservar a dónde iba el usuario, incluida la query, al redirigir a `/login`) también corrige un gap real de F4-T1 -- antes, visitar cualquier página protegida sin sesión perdía silenciosamente el destino y volvía siempre a `/search` tras loguearse.
 - **Impacto:** `dashboard/public/{sw.js,icon-192.png,icon-512.png,icon-512-maskable.png}` (nuevos), `dashboard/src/app/manifest.ts` (nuevo), `dashboard/src/app/api/share-target/route.ts` (nuevo), `dashboard/src/app/layout.tsx` (`viewport`, `appleWebApp`, monta `ServiceWorkerRegistration`), `dashboard/src/components/ServiceWorkerRegistration.tsx` (nuevo), `dashboard/src/lib/offline-queue.ts` (nuevo), `dashboard/src/app/(dashboard)/capture/page.tsx` (cola offline + recolección de share_target + indicador de adjunto compartido), `dashboard/src/app/(dashboard)/layout.tsx` (`AuthGuard` conserva `?from=` con query incluida).
 - **Impacto:** `mcp_server/` completo (nuevo — `pyproject.toml`, `mindos_mcp/{config,mindos_client,tools,server,auth_middleware,main}.py`, `tests/` con 21 tests, `README.md` con `mcp.json` de ejemplo stdio y remoto). `gateway/src/config.py` (`MCP_URL`, `SERVICE_ROUTES["mcp"]`), `gateway/tests/test_gateway.py` (+parametrización), `infra/docker-compose.yml` (servicio `mcp`), `.env.example` (`MCP_API_KEY`), `.github/workflows/ci.yml`, `pyproject.toml` (`testpaths`).
+
+---
+
+## Fase 7 — Asistente personal sobre Claude (F7-T1..T6) — 2026-11-16
+
+Detalle de tareas en [`08-asistente-personal-claude.md`](08-asistente-personal-claude.md).
+
+**Discrepancia con el plan (regla #10):** `README.md §1` fijaba "LLM = Ollama local". Se cambió
+a Claude Sonnet 5.5 vía API por decisión del usuario. Ollama se conserva para embeddings y como
+alternativa local (`LLM_PROVIDER=ollama`). La tabla de decisiones quedó actualizada.
+
+**Qué se verificó y cómo:**
+- `pytest -m "not integration"` (agents + gateway): tests nuevos de herramientas, bucle del
+  asistente, adaptador `LlmPort`, router SSE y streaming del Gateway.
+- Las siete herramientas contra el Memory Service real (en memoria, vía ASGI).
+- La petición a Claude y el parseo del stream, con el SDK real (`anthropic` 2.9) contra un
+  transporte HTTP simulado: confirma nombres de parámetros, cabecera beta y que el bloque de
+  razonamiento vuelve con su firma intacta en la siguiente petición.
+- En el navegador, contra el stack local (`scripts/dev_stack.py`): login, chat en streaming a
+  través del Gateway, citas resaltadas, fuentes al margen, restauración al recargar, tema claro
+  y oscuro, ancho de móvil.
+
+**Qué NO se verificó:** ninguna llamada real a la API de Claude. No había `ANTHROPIC_API_KEY`
+ni la CLI `ant` en el entorno. El modo demostración ejercita todo el camino menos el modelo.
+Es la tarea F7-T7 y es lo primero que hay que hacer con una key.
+
+**Hallazgos de paso:**
+- `dashboard/src/app/login/page.tsx` llamaba a `router.replace()` durante el render (aviso de
+  React "Cannot update a component while rendering a different component"). Movido a un efecto.
+- Las clases de `Settings` de cada servicio usan `extra="forbid"` (default de pydantic-settings):
+  un `.env` en la raíz con variables de otros servicios hace fallar el arranque local fuera de
+  Docker. En `agents/src/config.py` se puso `extra="ignore"`; `memory/` y `gateway/` siguen
+  igual, y `scripts/dev_stack.py` los arranca pasando las variables por entorno.
+- `mindos_schemas` y `mindos_common` instalados en modo editable apuntan al checkout principal:
+  en un worktree de git hay que anteponer `schemas` y `common` al `PYTHONPATH` para que se use
+  el código del worktree (`dev_stack.py` ya lo hace).
+- El fallback del lado del servidor ante un rechazo del clasificador de seguridad
+  (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`) está activo por defecto. Se
+  apaga con `ANTHROPIC_FALLBACKS=false`.

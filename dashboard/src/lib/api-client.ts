@@ -22,7 +22,7 @@ import type {
   TimeTravelResponse,
 } from "./types";
 
-const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8000";
+export const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8000";
 
 export class ApiError extends Error {
   constructor(
@@ -39,6 +39,11 @@ let authToken: string | null = null;
 /** Llamado por AuthProvider al hidratar/cambiar sesión -- evita que este módulo dependa de React. */
 export function setAuthToken(token: string | null) {
   authToken = token;
+}
+
+/** Para clientes que no pueden pasar por `request()` (el stream del asistente, F7-T6). */
+export function getAuthToken(): string | null {
+  return authToken;
 }
 
 async function request<T>(

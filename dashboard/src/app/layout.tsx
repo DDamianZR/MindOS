@@ -1,13 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Archivo, Geist_Mono, Piazzolla } from "next/font/google";
 import "./globals.css";
 
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import { AuthProvider } from "@/lib/auth";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Archivo (interfaz) y Piazzolla (lectura larga) vienen de la misma fundición, Omnibus-Type, y
+// Piazzolla se diseñó para texto denso en español: acentos, ñ y signos de apertura bien resueltos.
+const archivo = Archivo({
+  variable: "--font-archivo",
   subsets: ["latin"],
+});
+
+const piazzolla = Piazzolla({
+  variable: "--font-piazzolla",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
 });
 
 const geistMono = Geist_Mono({
@@ -17,12 +25,15 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "MindOS",
-  description: "Dashboard de MindOS: busca, explora el grafo de conocimiento y razona sobre tu memoria de largo plazo.",
+  description: "Tu memoria de largo plazo: conversa con ella, explora cómo se conecta y guarda lo que no quieres perder.",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "MindOS" },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#18181b",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f3f5f7" },
+    { media: "(prefers-color-scheme: dark)", color: "#0c141c" },
+  ],
 };
 
 export default function RootLayout({
@@ -33,9 +44,9 @@ export default function RootLayout({
   return (
     <html
       lang="es"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${archivo.variable} ${piazzolla.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="flex h-full min-h-full flex-col">
         <ServiceWorkerRegistration />
         <AuthProvider>{children}</AuthProvider>
       </body>
