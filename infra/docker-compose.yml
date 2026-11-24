@@ -132,6 +132,8 @@ services:
       COMMS_URL: http://comms:8003
       # Fase 9: conversaciones, rutinas y uso del asistente se guardan en Postgres.
       AGENTS_STORE: ${AGENTS_STORE:-postgres}
+      # El contenedor corre en UTC: sin esto "cada lunes a las 9" serían las 9 UTC.
+      ROUTINES_TIMEZONE: ${ROUTINES_TIMEZONE:-America/Mexico_City}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-mindos_user}:${POSTGRES_PASSWORD:-mindos_secure_password}@postgres:5432/${POSTGRES_DB:-mindos_db}
     depends_on:
       memory:

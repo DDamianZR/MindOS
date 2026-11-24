@@ -14,3 +14,7 @@ sqlalchemy[asyncio]>=2.0.0
 asyncpg>=0.28.0
 alembic>=1.13.0
 greenlet
+# Zona horaria IANA del servidor para las rutinas (en Windows traduce la zona del sistema);
+# tzdata da la base de zonas donde el sistema no la trae (Windows, imágenes slim).
+tzlocal>=5,<6
+tzdata>=2024.1
