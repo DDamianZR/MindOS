@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, text, update
+from sqlalchemy import Date, and_, case, cast, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from memory.src.application.ports.database import DatabasePort
@@ -379,3 +379,135 @@ class PgDatabaseRepository(DatabasePort):
         ver.tombstoned_at = datetime.now(timezone.utc) if tombstoned else None
         await self.session.flush()
         return True
+
+    async def get_stats_snapshot(self) -> dict[str, Any]:
+        statements = _stats_statements()
+        nodes = await self._scalar_int(statements["nodes"])
+        archived_nodes = await self._scalar_int(statements["archived_nodes"])
+        versions = await self._scalar_int(statements["versions"])
+        relations = await self._scalar_int(statements["relations"])
+        sources = await self._scalar_int(statements["sources"])
+        contradictions = await self._scalar_int(statements["contradictions"])
+
+        by_type_rows = await self.session.execute(statements["by_type"])
+        by_source_rows = await self.session.execute(statements["by_source"])
+        by_relation_rows = await self.session.execute(statements["by_relation"])
+        activity_rows = await self.session.execute(statements["activity"])
+        recent_rows = await self.session.execute(statements["recent_thinking"])
+
+        return {
+            "nodes": nodes,
+            "archived_nodes": archived_nodes,
+            "versions": versions,
+            "relations": relations,
+            "sources": sources,
+            "contradictions": contradictions,
+            "by_type": [{"key": key, "count": int(count)} for key, count in by_type_rows.all() if key is not None],
+            "by_source": [{"key": key, "count": int(count)} for key, count in by_source_rows.all()],
+            "by_relation": [{"key": key, "count": int(count)} for key, count in by_relation_rows.all()],
+            "activity": [
+                {"date": day, "created": int(created or 0), "updated": int(updated or 0)}
+                for day, created, updated in activity_rows.all()
+            ],
+            "recent_thinking": [
+                {
+                    "node_id": node_id,
+                    "title": title,
+                    "object_type": object_type,
+                    "version": int(version),
+                    "created_at": created_at,
+                }
+                for node_id, title, object_type, version, created_at in recent_rows.all()
+            ],
+        }
+
+    async def _scalar_int(self, stmt) -> int:
+        value = await self.session.scalar(stmt)
+        return int(value or 0)
+
+
+# Tipos de pensamiento que pide la portada. El servicio vuelve a filtrar y recorta a 8.
+_THINKING_TYPES = ("decision", "insight", "learning", "hypothesis")
+
+
+def _latest_version_subquery():
+    """
+    Versión de mayor número de cada nodo. Archivar marca solo esa fila: una versión
+    anterior sin tombstone no debe volver a contar el nodo como vigente.
+    """
+    max_version = (
+        select(
+            DbObjectVersion.node_id.label("node_id"),
+            func.max(DbObjectVersion.version).label("max_version"),
+        )
+        .group_by(DbObjectVersion.node_id)
+        .subquery()
+    )
+    return (
+        select(
+            DbObjectVersion.node_id.label("node_id"),
+            DbObjectVersion.version.label("version"),
+            DbObjectVersion.title.label("title"),
+            DbObjectVersion.created_at.label("created_at"),
+            DbObjectVersion.tombstoned_at.label("tombstoned_at"),
+            DbCognitiveObject.object_type.label("object_type"),
+        )
+        .join(
+            max_version,
+            and_(
+                DbObjectVersion.node_id == max_version.c.node_id,
+                DbObjectVersion.version == max_version.c.max_version,
+            ),
+        )
+        .join(DbCognitiveObject, DbCognitiveObject.id == DbObjectVersion.node_id)
+        .subquery()
+    )
+
+
+def _stats_statements() -> dict[str, Any]:
+    """Consultas agregadas (count / group by). Ninguna trae las filas sueltas a Python."""
+    latest = _latest_version_subquery()
+    active_relation = DbCognitiveRelation.valid_to.is_(None)
+    day_expr = cast(func.timezone("UTC", DbObjectVersion.created_at), Date)
+    return {
+        "nodes": select(func.count()).select_from(latest).where(latest.c.tombstoned_at.is_(None)),
+        "archived_nodes": select(func.count()).select_from(latest).where(latest.c.tombstoned_at.is_not(None)),
+        "versions": select(func.count()).select_from(DbObjectVersion),
+        "relations": select(func.count()).select_from(DbCognitiveRelation).where(active_relation),
+        "sources": select(func.count()).select_from(DbSource),
+        "contradictions": select(func.count()).select_from(DbCognitiveRelation).where(
+            active_relation,
+            DbCognitiveRelation.relation_type == "CONTRADICTS",
+        ),
+        "by_type": (
+            select(latest.c.object_type, func.count())
+            .where(latest.c.tombstoned_at.is_(None))
+            .group_by(latest.c.object_type)
+        ),
+        "by_source": select(DbSource.kind, func.count()).group_by(DbSource.kind),
+        "by_relation": (
+            select(DbCognitiveRelation.relation_type, func.count())
+            .where(active_relation)
+            .group_by(DbCognitiveRelation.relation_type)
+        ),
+        "activity": select(
+            day_expr.label("day"),
+            func.sum(case((DbObjectVersion.version == 1, 1), else_=0)).label("created"),
+            func.sum(case((DbObjectVersion.version > 1, 1), else_=0)).label("updated"),
+        ).group_by(day_expr),
+        "recent_thinking": (
+            select(
+                latest.c.node_id,
+                latest.c.title,
+                latest.c.object_type,
+                latest.c.version,
+                latest.c.created_at,
+            )
+            .where(
+                latest.c.tombstoned_at.is_(None),
+                latest.c.object_type.in_(_THINKING_TYPES),
+            )
+            .order_by(latest.c.created_at.desc())
+            .limit(8)
+        ),
+    }
