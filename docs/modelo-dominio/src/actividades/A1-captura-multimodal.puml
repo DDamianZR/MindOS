@@ -1,0 +1,77 @@
+@startuml A1-captura-multimodal
+!include ../_tema.iuml
+title A1 · Proceso de negocio: capturar conocimiento (pipeline de ingestión, F3-T5)
+
+|Usuario|
+start
+:Envía un mensaje por CLI, REST o WhatsApp\n(texto, imagen, audio o PDF);
+
+|Comms|
+:Normaliza el mensaje a **MessageReceivedEvent**\n(mismo evento sin importar el canal);
+:Publica en el stream **mindos.comms**\ncon correlation_id;
+
+|Memory (IngestionPipeline)|
+:Consume el evento y valida su esquema;
+if (¿Evento malformado?) then (sí)
+  :Registra error y **descarta**;
+  stop
+else (no)
+endif
+
+partition "Resolver contenido (multimodal)" {
+  :Determinar **SourceKind** según canal y tipo de medio\n(cli / whatsapp / image / audio / pdf / api);
+  if (¿Trae binario adjunto\n(media_base64)?) then (sí)
+    :Guardar el binario en **Storage** (MinIO / FS);
+    if (¿Imagen o PDF?) then (sí)
+      :**OCR** (Tesseract) → texto extraído;
+    elseif (¿Audio?) then (sí)
+      :**STT** (faster-whisper) → transcripción;
+    else (otro)
+    endif
+    note right
+      Si OCR/STT falla se registra el error
+      y se sigue solo con el texto del mensaje.
+    end note
+    :Combinar texto del mensaje + texto extraído;
+  else (no)
+    :Usar el texto del mensaje;
+  endif
+}
+
+if (¿Hay contenido capturable?) then (no)
+  :Registrar y descartar;
+  stop
+else (sí)
+endif
+
+:Ingerir como objeto cognitivo **note**\ncon provenance (Fuente) → ver **A2**;
+if (¿Ingesta falló?) then (sí)
+  :Registrar error (best-effort, no tumba el consumidor);
+  stop
+else (no)
+endif
+
+:Proponer relaciones por similitud → ver **A4** (IA);
+
+partition "Clasificación de intención (IA)" {
+  :LLM (JSON): ¿el mensaje es una **pregunta**?;
+  note right
+    Ante fallo del LLM se asume
+    "no es pregunta" (falla cerrado).
+  end note
+}
+
+if (¿Es una pregunta?) then (sí)
+  |Agents|
+  :POST /agents/execute con goal = texto\n(+ reply_to = canal y remitente si no es CLI);
+  :Ejecutar ciclo Planner → Executor → Reviewer → ver **A6**;
+  |Comms|
+  :Entregar la respuesta por el **mismo canal** de origen;
+  |Usuario|
+  :Recibe la respuesta;
+else (no)
+  |Usuario|
+  :El conocimiento queda capturado\ny enlazado en el grafo;
+endif
+stop
+@enduml

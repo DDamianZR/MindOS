@@ -1,0 +1,67 @@
+@startuml A2-ingesta-dedup-versionado
+!include ../_tema.iuml
+title A2 · Algoritmo: ingesta con deduplicación semántica, versionado y provenance (POST /memory/ingest, F1-T2/T4/T5)
+
+start
+:Recibir **IngestKnowledgeRequest**\n(tipo, título, contenido, autor, confianza,\nimportancia, evidencia, fuente?, on_duplicate);
+:Propagar o generar **correlation_id** (UUIDv7);
+:**Embedding** del contenido (nomic-embed-text, 768 d)\n— se calcula una sola vez y se reutiliza;
+
+partition "Deduplicación semántica (IA)" {
+  if (¿node_id ausente **y** on_duplicate ≠ force_new?) then (sí)
+    :Buscar el vecino más cercano en el vector store (k = 1);
+    if (¿similitud ≥ 0.92 **y** el vecino no está archivado?) then (sí)
+      :duplicate_of = vecino;\nduplicate_score = similitud;
+    else (no)
+    endif
+  else (no)
+  endif
+}
+
+if (¿node_id explícito?) then (sí)
+  :Usar ese node_id (actualización);
+elseif (¿duplicate_of **y** on_duplicate = new_version?) then (sí)
+  :Reutilizar node_id del duplicado\n(se versiona el nodo existente);
+else (no)
+  :Generar node_id nuevo (UUIDv7);
+endif
+
+:Guardar el nodo (ObjetoCognitivo);
+:Calcular **siguiente versión** = última + 1\nparent_version_id = id de la versión previa;
+
+partition "Provenance" {
+  if (¿Request trae fuente?) then (sí)
+    if (¿Existe Fuente con el mismo (kind, uri)?) then (sí)
+      :Reutilizar la fuente existente;
+    else (no)
+      :Crear nueva Fuente;
+    endif
+  endif
+}
+
+:Guardar **VersionObjeto** (inmutable)\ncon confianza, importancia, estado y evidencia;
+:Guardar/actualizar el embedding en pgvector;
+:Registrar en **event_log**:\nknowledge.created (v1) o knowledge.updated (v>1);
+
+if (¿duplicate_of **y** on_duplicate = link?) then (sí)
+  :Crear relación **DUPLICATE_OF** (con la similitud en metadata);
+  :Registrar en event_log relation.created;
+endif
+
+:**COMMIT** atómico (nodo + versión + relación + event_log);
+:Publicar eventos en el bus **mindos.memory** (best-effort);
+
+if (¿Tipo ∈ {fact, hypothesis}?) then (sí)
+  :Detección de contradicciones → ver **A3** (IA);
+else (no)
+endif
+
+:Responder con node_id, versión, duplicate_of y duplicate_score;
+stop
+
+note right
+  Invariantes: nunca se borra físicamente;
+  actualizar = crear una versión nueva;
+  el evento se persiste ANTES de publicarse.
+end note
+@enduml

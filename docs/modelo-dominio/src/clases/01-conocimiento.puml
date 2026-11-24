@@ -1,0 +1,164 @@
+@startuml 01-conocimiento
+!include ../_tema.iuml
+title Dominio de Conocimiento — Knowledge Graph (servicio Memory)
+hide empty members
+
+class ObjetoCognitivo <<aggregate root>> {
+  + id : UUID <<uuid7>>
+  + tipo : ObjectType
+  + creadoEn : datetime
+  --
+  + versionVigente() : VersionObjeto
+  + versionEn(t : datetime) : VersionObjeto?
+  + archivar() <<tombstone>>
+  + restaurar()
+}
+
+class VersionObjeto <<immutable>> {
+  + id : UUID <<uuid7>>
+  + numero : int
+  + titulo : str {≤255}
+  + contenido : str
+  + embedding : Vector(768)
+  + metadata : dict
+  + autor : str
+  + creadoEn : datetime
+  + confianza : float [0..1]
+  + importancia : float [0..1]
+  + saliencia : float [0..1]
+  + estado : ObjectStatus
+  + archivadoEn : datetime?
+  --
+  {invariante} (nodo, numero) único
+  {invariante} nunca se borra físicamente
+}
+
+class Relacion <<temporal edge>> {
+  + origenId : UUID
+  + destinoId : UUID
+  + tipo : RelationType
+  + validoDesde : datetime
+  + validoHasta : datetime?
+  + metadata : dict
+  --
+  + estaVigenteEn(t : datetime) : bool
+}
+
+class Fuente <<provenance>> {
+  + id : UUID
+  + tipo : SourceKind
+  + uri : str?
+  + refCruda : str?
+  + capturadaEn : datetime
+  + metadata : dict
+  --
+  {regla} (tipo, uri) se reutiliza, no se duplica
+}
+
+class Evidencia <<value object>> {
+  + nodoId : UUID?
+  + url : str?
+  + cita : str?
+  + peso : float ≥ 0
+}
+
+class EventoLog <<append-only>> {
+  + eventoId : UUID
+  + tipoEvento : str
+  + payload : json
+  + registradoEn : datetime
+}
+
+enum ObjectType {
+  note
+  idea
+  document
+  conversation
+  concept
+  person
+  project
+  task
+  resource
+  technology
+  event
+  observation
+  experience
+  --Thinking Graph--
+  question
+  hypothesis
+  investigation
+  evidence
+  decision
+  outcome
+  learning
+  fact
+  insight
+}
+
+enum ObjectStatus {
+  draft
+  active
+  hypothesis
+  fact
+  superseded
+  archived
+}
+
+enum RelationType {
+  PART_OF
+  RELATED_TO
+  DERIVED_FROM
+  SUPPORTS
+  CONTRADICTS
+  CAUSED_BY
+  DUPLICATE_OF
+  MENTIONS
+  ANSWERS
+  EVIDENCES
+  DECIDES
+  LEADS_TO
+  CUSTOM
+}
+
+enum SourceKind {
+  whatsapp
+  pdf
+  image
+  audio
+  web
+  cli
+  api
+  agent
+}
+
+ObjetoCognitivo "1" *-- "1..*" VersionObjeto : versiones
+VersionObjeto "0..*" -up-> "0..1" VersionObjeto : padre\n(parentVersionId)
+VersionObjeto "0..*" --> "0..1" Fuente : proviene de
+VersionObjeto *-- "0..*" Evidencia : evidencia\n(JSON embebido)
+Evidencia ..> ObjetoCognitivo : nodoId
+Relacion "0..*" --> "1" ObjetoCognitivo : origen
+Relacion "0..*" --> "1" ObjetoCognitivo : destino
+
+ObjetoCognitivo --> ObjectType
+VersionObjeto --> ObjectStatus
+Relacion --> RelationType
+Fuente --> SourceKind
+EventoLog ..> ObjetoCognitivo : narra cambios\n(created / updated /\narchived / restored)
+EventoLog ..> Relacion : narra cambios\n(created / deleted)
+
+note right of Relacion
+  Las relaciones llevan semántica de razonamiento:
+  CONTRADICTS (detector F2-T5), DUPLICATE_OF (dedup F1-T5),
+  EVIDENCES / DECIDES / ANSWERS (Thinking Graph),
+  RELATED_TO / PART_OF / MENTIONS… (auto-enlazado F3-T5).
+  Un tipo fuera del catálogo se normaliza a CUSTOM y se
+  conserva en metadata.custom_relation_type.
+end note
+
+note bottom of VersionObjeto
+  Ciclo de vida del estado:
+  draft → active → hypothesis → fact → superseded → archived.
+  Cambiar el contenido NO muta la versión: crea la siguiente
+  (numero + 1) con parentVersionId = versión anterior.
+end note
+@enduml

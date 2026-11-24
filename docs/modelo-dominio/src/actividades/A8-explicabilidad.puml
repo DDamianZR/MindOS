@@ -1,0 +1,59 @@
+@startuml A8-explicabilidad
+!include ../_tema.iuml
+title A8 · Algoritmo: explicar "¿cómo llegué a esto?" — recorrido hacia atrás del grafo (F2-T3 / F2-T4)
+
+|Usuario|
+start
+:Pregunta "¿Cómo llegué a esta conclusión?"\n(GET /thinking/explain/{nodo})\no "¿Qué respalda esta recomendación?" (GET /cognitive/support);
+
+|Memory (Explainability)|
+:Elegir **filtro de aristas** según la pregunta:\n• explain → {DECIDES, EVIDENCES, DERIVED_FROM, ANSWERS}\n• support → {SUPPORTS, EVIDENCES};
+:Obtener versión vigente del nodo raíz\n(**incluye archivados**);
+if (¿El nodo existe?) then (no)
+  :404;
+  stop
+endif
+
+:Consultar aristas **entrantes** hasta profundidad 3\n(CTE recursiva sobre relaciones);
+:Quedarse solo con aristas cuyo tipo esté en el filtro;
+:Agrupar aristas por nodo destino\n(índice de hijos por padre);
+
+partition "construirÁrbol(nodo, visitados) — recursivo" {
+  :hijos = aristas que llegan a **nodo**;
+  while (¿Quedan aristas por procesar?) is (sí)
+    if (¿El origen ya está en visitados?) then (sí)
+      :Omitir (protección contra ciclos);
+    else (no)
+      :Obtener versión del origen (con caché);
+      if (¿Sin versión?) then (sí)
+        :Omitir;
+      else (no)
+        :Resolver la **Fuente** de origen (provenance);
+        :Construir recursivamente el sustento del origen\n(visitados ∪ {origen});
+        :Crear **ExplainEvidenceDto**\n(tipo de relación, confianza, importancia,\nfuente, sustento anidado);
+      endif
+    endif
+  endwhile (no)
+}
+
+if (¿Pregunta = explain?) then (sí)
+  |Thinking Graph|
+  :Obtener los **episodios de razonamiento** que\nprodujeron o citaron el nodo (knowledgeRefs);
+  |Memory (Explainability)|
+else (no)
+endif
+
+:Responder con el nodo, el árbol de evidencia\ny (si aplica) los episodios;
+
+|Usuario|
+:Ve la cadena de sustento con su origen en cada nivel;
+
+|Memory (Explainability)|
+note right
+  Variante "explicar episodio": narra el episodio paso a paso
+  (Planificación / Replanificación / Ejecución con capacidad /
+  Revisión aprobada o rechazada / Conclusión / Resultado final).
+end note
+|Usuario|
+stop
+@enduml
