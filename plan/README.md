@@ -139,6 +139,7 @@ Regla de oro: **nada accede a la infraestructura directamente**; todo pasa por e
 | **5 · Automatización** | [`05-automatizacion.md`](05-automatizacion.md) | Reflexión/consolidación, resurfacing, investigación, lifecycle. | ⏳ depende de 2 |
 | **6 · Producción y despliegue** | [`06-produccion-despliegue.md`](06-produccion-despliegue.md) | Hardening, Docker stack completo, deploy al server, backups, observabilidad, CI/CD. | ⏳ incremental (0→5) |
 | **7 · Asistente personal (Claude)** | [`08-asistente-personal-claude.md`](08-asistente-personal-claude.md) | Asistente conversacional sobre Claude Sonnet 5.5, streaming por el Gateway, vista Asistente y sistema visual. | 🟡 F7-T1..T6 hechas; falta verificación con API key real (F7-T7) |
+| **8 · Agente y consola** | [`09-agente-y-consola.md`](09-agente-y-consola.md) | Qué distingue a MindOS, investigación web y rutinas del agente, portada con estadísticas, catálogo de diagramas, sistema visual nuevo. | 🟡 código hecho; falta verificación con API key real (F8-T10) |
 | **▶ Runway de ejecución** | [`07-runway-a-produccion.md`](07-runway-a-produccion.md) | Secuencia maestra: stages + puertas de despliegue + protocolo de ejecución. | **empieza aquí** |
 
 > **Nivel de detalle:** las fases 0-2 están a nivel de tarea atómica (near-term, máxima precisión).
