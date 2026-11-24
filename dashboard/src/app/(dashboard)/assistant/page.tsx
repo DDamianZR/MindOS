@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import Link from "next/link";
+
 import { AnswerProse } from "@/components/assistant/AnswerProse";
 import { Composer, type ComposerHandle } from "@/components/assistant/Composer";
 import { Marginalia, type ToolRun, uniqueSources } from "@/components/assistant/Marginalia";
 import { NewConversationIcon } from "@/components/icons";
+import { Badge, Button, ErrorNotice, PageHeader } from "@/components/ui";
 import { ApiError } from "@/lib/api-client";
 import {
   type AssistantEvent,
@@ -95,9 +98,11 @@ function TurnView({ turn, onRetry }: { turn: Turn; onRetry: (() => void) | null 
   const sources = uniqueSources(turn.tools);
   const hasNotes = turn.tools.some((t) => t.status !== "running") || Boolean(turn.thinking);
 
+  const proposedRoutine = turn.tools.some((tool) => tool.name === "create_routine" && tool.status === "ok");
+
   return (
-    <article className="grid gap-x-12 border-t border-rule pt-7 pb-9 first:border-t-0 first:pt-0 lg:grid-cols-[minmax(0,40rem)_13.5rem]">
-      <h2 className="text-[1.0625rem] leading-snug font-semibold whitespace-pre-wrap text-ink lg:col-start-1">
+    <article className="grid gap-x-12 border-t border-hairline pt-7 pb-9 first:border-t-0 first:pt-0 lg:grid-cols-[minmax(0,40rem)_13.5rem]">
+      <h2 className="text-subheading font-medium whitespace-pre-wrap text-obsidian lg:col-start-1">
         {turn.question}
       </h2>
 
@@ -106,26 +111,39 @@ function TurnView({ turn, onRetry }: { turn: Turn; onRetry: (() => void) | null 
           <AnswerProse text={turn.answer} sources={sources} isStreaming={turn.status === "streaming" && !status} />
         )}
 
+        {proposedRoutine && (
+          <p className="mt-4 flex flex-wrap items-center gap-3">
+            <Badge tone="agente">Rutina propuesta</Badge>
+            <Link href="/routines" className="text-body-sm text-obsidian underline underline-offset-4">
+              Revisarla en Rutinas
+            </Link>
+          </p>
+        )}
+
         {status && (
-          <p role="status" className={`status-dots text-sm text-ink-faint ${turn.answer ? "mt-3" : ""}`}>
+          <p role="status" className={`status-dots text-caption text-muted ${turn.answer ? "mt-3" : ""}`}>
             {status}
           </p>
         )}
 
         {turn.notice && (
-          <p className={`mt-3 text-sm ${turn.status === "error" ? "text-danger" : "text-ink-faint"}`}>
-            {turn.notice}{" "}
-            {onRetry && (
-              <button onClick={onRetry} className="font-medium text-accent underline underline-offset-2">
-                Volver a intentar
-              </button>
+          <div className="mt-3 space-y-2">
+            {turn.status === "error" ? (
+              <ErrorNotice>{turn.notice}</ErrorNotice>
+            ) : (
+              <p className="text-caption text-muted">{turn.notice}</p>
             )}
-          </p>
+            {onRetry && (
+              <Button type="button" variant="ghost" onClick={onRetry}>
+                Volver a intentar
+              </Button>
+            )}
+          </div>
         )}
 
         {hasNotes && (
-          <details className="mt-4 text-sm lg:hidden">
-            <summary className="cursor-pointer text-ink-faint select-none">
+          <details className="mt-4 text-caption lg:hidden">
+            <summary className="cursor-pointer text-muted select-none">
               {sources.length > 0
                 ? `Fuentes consultadas (${sources.length})`
                 : "Qué consultó"}
@@ -304,38 +322,35 @@ export default function AssistantPage() {
       <div ref={scrollRef} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[62rem] px-5 pt-6 md:px-10 md:pt-8">
           {!isEmpty && (
-            <div className="mb-6 flex justify-end">
-              <button
-                onClick={startNewConversation}
-                disabled={isStreaming}
-                className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-ink-soft hover:bg-rule hover:text-ink disabled:opacity-50"
-              >
+            <div className="mb-8 flex justify-end">
+              <h1 className="sr-only">Asistente</h1>
+              <Button type="button" variant="ghost" onClick={startNewConversation} disabled={isStreaming}>
                 <NewConversationIcon />
                 Conversación nueva
-              </button>
+              </Button>
             </div>
           )}
 
           {isEmpty ? (
-            <section className="max-w-[40rem] pt-[8vh] pb-10 md:pt-[14vh]">
-              <h1 className="font-serif text-[2.25rem] leading-[1.1] font-normal tracking-[-0.015em] text-ink md:text-[2.75rem]">
-                ¿Qué quieres recordar?
-              </h1>
-              <p className="mt-4 max-w-[34rem] text-[0.9375rem] leading-relaxed text-ink-soft">
-                Pregunta por algo que guardaste, pide conectar ideas que quedaron sueltas o dicta una
-                nota. Cada respuesta muestra al margen de qué parte de tu memoria salió.
-              </p>
+            <section className="max-w-[40rem] pt-8 pb-10 md:pt-16">
+              <PageHeader
+                title="¿Qué quieres recordar?"
+                description="Pregunta por algo que guardaste, pide conectar ideas que quedaron sueltas o dicta una nota. Cada respuesta muestra al margen de qué parte de tu memoria salió."
+              />
 
-              <p className="mt-10 mb-2 text-sm text-ink-faint">Empieza una frase y termínala con tu tema</p>
-              <ul className="border-y border-rule">
+              <p id="starters-label" className="mt-12 mb-2 text-caption text-muted">
+                Empieza una frase y termínala con tu tema
+              </p>
+              <ul aria-labelledby="starters-label" className="border-y border-hairline">
                 {STARTERS.map((starter) => (
-                  <li key={starter} className="border-t border-rule first:border-t-0">
+                  <li key={starter} className="border-t border-hairline first:border-t-0">
                     <button
+                      type="button"
                       onClick={() => fillStarter(starter)}
-                      className="w-full py-2.5 text-left font-serif text-[1.125rem] text-ink-soft hover:text-ink"
+                      className="w-full py-3 text-left text-subheading text-slate hover:text-obsidian"
                     >
                       {starter.trimEnd()}
-                      <span className="text-ink-faint">{starter.trimEnd().endsWith(":") ? " …" : "…"}</span>
+                      <span className="text-muted">{starter.trimEnd().endsWith(":") ? " …" : "…"}</span>
                     </button>
                   </li>
                 ))}
@@ -361,7 +376,11 @@ export default function AssistantPage() {
 
       <div className="mx-auto w-full max-w-[62rem] px-5 pt-2 pb-4 md:px-10 md:pb-5">
         <div className="max-w-[40rem]">
-          {statusError && <p className="mb-2 text-sm text-danger">{statusError}</p>}
+          {statusError && (
+            <div className="mb-3">
+              <ErrorNotice>{statusError}</ErrorNotice>
+            </div>
+          )}
           <Composer
             ref={composerRef}
             value={draft}

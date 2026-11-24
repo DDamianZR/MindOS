@@ -3,6 +3,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
 import { SendIcon, StopIcon } from "@/components/icons";
+import { Button } from "@/components/ui";
 
 export interface ComposerHandle {
   /** Pone el foco en el campo y deja el cursor al final (para los comienzos de frase sugeridos). */
@@ -56,7 +57,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   return (
     <div>
-      <div className="flex items-end gap-2 rounded-2xl border border-rule-strong bg-surface py-2 pr-2 pl-4 shadow-[0_1px_0_var(--rule)] focus-within:border-accent">
+      <div className="flex items-end gap-2 rounded-md border border-hairline bg-paper py-2 pr-2 pl-3 focus-within:border-obsidian">
         <label htmlFor="assistant-message" className="sr-only">
           Mensaje para el asistente
         </label>
@@ -68,30 +69,26 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           onKeyDown={handleKeyDown}
           rows={1}
           placeholder="Pregunta a tu memoria o dicta una nota"
-          className="min-h-9 flex-1 resize-none bg-transparent py-1.5 text-[0.9375rem] leading-6 text-ink outline-none placeholder:text-ink-faint"
+          className="min-h-9 flex-1 resize-none bg-transparent py-1.5 text-body-sm text-obsidian placeholder:text-muted"
         />
         {isStreaming ? (
-          <button
-            type="button"
-            onClick={onStop}
-            className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-rule-strong px-3 text-sm text-ink hover:bg-rule"
-          >
+          <Button type="button" variant="ghost" onClick={onStop} className="shrink-0">
             <StopIcon />
             Detener
-          </button>
+          </Button>
         ) : (
           <button
             type="button"
             onClick={onSend}
             disabled={!canSend}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-ink disabled:bg-rule disabled:text-ink-faint"
+            className="flex size-9 shrink-0 items-center justify-center rounded-md bg-obsidian text-paper disabled:opacity-40"
           >
             <SendIcon />
             <span className="sr-only">Enviar</span>
           </button>
         )}
       </div>
-      <p className="mt-2 flex flex-wrap justify-between gap-x-4 px-1 text-xs text-ink-faint">
+      <p className="mt-2 flex flex-wrap justify-between gap-x-4 px-1 font-mono text-mono-sm text-muted">
         <span>{footnote}</span>
         <span className="hidden sm:inline">Enter envía, Mayús + Enter hace un salto de línea</span>
       </p>
