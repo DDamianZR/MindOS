@@ -52,6 +52,12 @@ class DummyDatabase(DatabasePort):
     async def query_incoming_relations(self, target_node_id, max_depth):
         return [r for r in self.relations if r["target_id"] == target_node_id]
     async def save_event_log(self, event_id, event_type, payload): pass
+    async def get_stats_snapshot(self):
+        return {
+            "nodes": 0, "archived_nodes": 0, "versions": 0, "relations": 0,
+            "sources": 0, "contradictions": 0, "by_type": [], "by_source": [],
+            "by_relation": [], "activity": [], "recent_thinking": [],
+        }
 
 
 # Mock concreto para los Embeddings

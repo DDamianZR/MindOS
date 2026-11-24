@@ -30,6 +30,7 @@ from agents.src.infrastructure.adapters.in_memory_capability_registry import (
 from comms.src import main as comms_main
 from comms.src.infrastructure.adapters.event_bus_inbound_handler import EventBusInboundHandler
 from gateway.src import main as gateway_main
+from gateway.src.application.services.security import create_access_token
 from gateway.src.infrastructure.adapters.in_memory_rate_limiter import InMemoryRateLimiter
 from memory.src import main as memory_main
 from memory.src.application.services.ingestion_pipeline import IngestionPipelineService
@@ -139,6 +140,16 @@ def _auth_headers():
     return {"X-Api-Key": "test-api-key"}
 
 
+def _human_headers():
+    """JWT de sesión humana: resolver una aprobación es decisión de la persona, no de una API key
+    de servicio (el Gateway lo rechaza con 403 desde la Fase 8)."""
+    token = create_access_token(
+        subject="damian", secret=gateway_main.settings.JWT_SECRET,
+        algorithm=gateway_main.settings.JWT_ALGORITHM, expiry_minutes=5,
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_capture_via_gateway_reaches_comms_and_pipeline_indexes_it_with_provenance(monkeypatch):
     """El único punto de entrada (Gateway) autentica, rutea a comms, comms publica el evento
     real, y el pipeline (disparado a mano, sin Redis real) indexa el conocimiento con
@@ -239,8 +250,12 @@ def test_sensitive_capability_pauses_and_resolves_via_gateway_approvals_endpoint
         assert get_resp.json()["status"] == "pending"
 
         with gateway_client:
-            resolve_resp = gateway_client.post(
+            service_resp = gateway_client.post(
                 f"/api/v1/approvals/{approval_id}/resolve", headers=_auth_headers(), json={"approved": True},
+            )
+            assert service_resp.status_code == 403, "una API key de servicio no puede aprobar por la persona"
+            resolve_resp = gateway_client.post(
+                f"/api/v1/approvals/{approval_id}/resolve", headers=_human_headers(), json={"approved": True},
             )
         assert resolve_resp.status_code == 200, resolve_resp.text
         body = resolve_resp.json()
