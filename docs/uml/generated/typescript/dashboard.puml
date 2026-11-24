@@ -1,0 +1,321 @@
+@startuml
+!include ../../src/_tema.iuml
+title Dashboard — interfaces y clases TypeScript (generado con tplant)
+left to right direction
+interface SourceDto {
+    +id: string
+    +kind: string
+    +uri: string
+    +raw_ref: string
+    +captured_at: string
+    +metadata: Record<string, unknown>
+}
+interface SearchResultItem {
+    +node_id: string
+    +version: number
+    +title: string
+    +content: string
+    +score: number
+    +metadata: Record<string, unknown>
+    +object_type: ObjectType
+    +confidence: number
+    +importance: number
+    +status: string
+}
+interface SearchKnowledgeResponse {
+    +query: string
+    +results: SearchResultItem[]
+}
+interface ContextFragment {
+    +citation_label: string
+    +node_id: string
+    +version: number
+    +title: string
+    +content: string
+    +object_type: ObjectType
+    +source_id: string
+    +score: number
+    +similarity: number
+    +importance: number
+    +confidence: number
+    +recency: number
+    +via_graph: boolean
+}
+interface ContextTimelineEntry {
+    +node_id: string
+    +version: number
+    +title: string
+    +created_at: string
+}
+interface ContradictionScanResponse {
+    +nodes_checked: number
+    +contradictions_detected: number
+}
+interface ContextBundle {
+    +query: string
+    +fragments: ContextFragment[]
+    +timeline: ContextTimelineEntry[]
+    +relations_summary: string[]
+}
+interface EvidenceItem {
+    +node_id: string
+    +url: string
+    +quote: string
+    +weight: number
+}
+interface NodeVersionDto {
+    +version: number
+    +title: string
+    +content: string
+    +author: string
+    +created_at: string
+    +parent_version_id: string
+    +confidence: number
+    +importance: number
+    +status: string
+    +evidence: EvidenceItem[]
+    +salience: number
+    +tombstoned_at: string
+}
+interface GetNodeHistoryResponse {
+    +node_id: string
+    +object_type: ObjectType
+    +versions: NodeVersionDto[]
+}
+interface VersionProvenanceDto {
+    +version: number
+    +created_at: string
+    +author: string
+    +source: SourceDto
+}
+interface GetNodeProvenanceResponse {
+    +node_id: string
+    +chain: VersionProvenanceDto[]
+}
+interface TimeTravelRelationDto {
+    +source_id: string
+    +target_id: string
+    +relation_type: string
+}
+interface TimeTravelResponse {
+    +node_id: string
+    +at: string
+    +found: boolean
+    +version: NodeVersionDto
+    +relations: TimeTravelRelationDto[]
+}
+interface NeighborEdgeDto {
+    +source_id: string
+    +target_id: string
+    +relation_type: string
+    +metadata: Record<string, unknown>
+}
+interface GetNodeNeighborsResponse {
+    +node_id: string
+    +depth: number
+    +neighbors: NeighborEdgeDto[]
+}
+interface ExplainEvidenceDto {
+    +node_id: string
+    +title: string
+    +content: string
+    +object_type: string
+    +relation_type: string
+    +confidence: number
+    +importance: number
+    +source: SourceDto
+    +supporting: ExplainEvidenceDto[]
+}
+interface ReasoningStepDto {
+    +id: string
+    +episode_id: string
+    +step_index: number
+    +kind: string
+    +input: string
+    +output: string
+    +capability_name: string
+    +approved: boolean
+    +feedback: string
+    +created_at: string
+    +knowledge_refs: string[]
+}
+interface ReasoningEpisodeDto {
+    +id: string
+    +goal: string
+    +correlation_id: string
+    +agent: string
+    +status: string
+    +started_at: string
+    +ended_at: string
+    +final_output: string
+    +steps: ReasoningStepDto[]
+}
+interface ExplainNodeResponse {
+    +node_id: string
+    +title: string
+    +content: string
+    +object_type: string
+    +supporting_evidence: ExplainEvidenceDto[]
+    +episodes: ReasoningEpisodeDto[]
+}
+interface ExplainEpisodeResponse {
+    +episode: ReasoningEpisodeDto
+    +narrative: string[]
+}
+interface PastThinkingItem {
+    +node_id: string
+    +title: string
+    +content: string
+    +version: number
+    +object_type: string
+    +similarity: number
+    +as_of_created_at: string
+}
+interface PastThinkingResponse {
+    +topic: string
+    +at: string
+    +items: PastThinkingItem[]
+}
+interface SimilarIdeaItem {
+    +node_id: string
+    +title: string
+    +content: string
+    +object_type: string
+    +similarity: number
+    +created_at: string
+}
+interface SimilarIdeasResponse {
+    +node_id: string
+    +items: SimilarIdeaItem[]
+}
+interface DecisionItem {
+    +node_id: string
+    +title: string
+    +content: string
+    +rationale: string
+    +created_at: string
+    +evidence_node_ids: string[]
+    +decides_node_ids: string[]
+}
+interface DecisionsResponse {
+    +topic: string
+    +decisions: DecisionItem[]
+}
+interface SupportResponse {
+    +node_id: string
+    +title: string
+    +content: string
+    +object_type: string
+    +support: ExplainEvidenceDto[]
+}
+interface ContradictionPair {
+    +node_a_id: string
+    +node_a_title: string
+    +node_b_id: string
+    +node_b_title: string
+    +rationale: string
+    +confidence: number
+}
+interface ContradictionsResponse {
+    +topic: string
+    +contradictions: ContradictionPair[]
+}
+interface PatternBucket {
+    +period: string
+    +object_type: string
+    +count: number
+}
+interface PatternsResponse {
+    +buckets: PatternBucket[]
+    +total_nodes: number
+    +most_common_type: string
+}
+interface RegisterDecisionResponse {
+    +node_id: string
+    +version: number
+    +title: string
+    +rationale: string
+    +created_at: string
+}
+interface ApprovalRequestDto {
+    +id: string
+    +episode_id: string
+    +step_id: number
+    +capability_name: string
+    +inputs: Record<string, unknown>
+    +status: "pending" | "approved" | "rejected"
+    +reply_to: { provider: string; sender_id: string; }
+    +created_at: string
+    +resolved_at: string
+    +result_output: string
+}
+interface ResolveApprovalResponse {
+    +approval: ApprovalRequestDto
+    +executed: boolean
+}
+interface ListApprovalsResponse {
+    +approvals: ApprovalRequestDto[]
+}
+interface InboundMessageResponse {
+    +status: string
+    +message_id: string
+    +provider: string
+}
+interface LoginResponse {
+    +access_token: string
+    +token_type: string
+    +expires_in_minutes: number
+}
+interface HealthResponse {
+    +status: string
+    +service: string
+    +downstream: Record<string, string>
+}
+class ApiError extends Error {
+    +status: number
+    +detail: string
+}
+interface InboundMessageInput {
+    +senderId: string
+    +text: string
+    +media?: { base64: string; mimetype: string; kind: "image" | "audio" | "document"; }
+}
+interface StoredSession {
+    +token: string
+    +username: string
+}
+interface AuthContextValue {
+    +username: string
+    +isAuthenticated: boolean
+    +isLoading: boolean
+    +login: (username: string, password: string) => Promise<void>
+    +logout: () => void
+}
+interface QueuedCapture extends InboundMessageInput {
+    +id: string
+    +queuedAt: string
+}
+SearchKnowledgeResponse --> "*" SearchResultItem
+ContextBundle --> "*" ContextFragment
+ContextBundle --> "*" ContextTimelineEntry
+NodeVersionDto --> "*" EvidenceItem
+GetNodeHistoryResponse --> "*" NodeVersionDto
+VersionProvenanceDto --> "1" SourceDto
+GetNodeProvenanceResponse --> "*" VersionProvenanceDto
+TimeTravelResponse --> "1" NodeVersionDto
+TimeTravelResponse --> "*" TimeTravelRelationDto
+GetNodeNeighborsResponse --> "*" NeighborEdgeDto
+ExplainEvidenceDto --> "1" SourceDto
+ReasoningEpisodeDto --> "*" ReasoningStepDto
+ExplainNodeResponse --> "*" ExplainEvidenceDto
+ExplainNodeResponse --> "*" ReasoningEpisodeDto
+ExplainEpisodeResponse --> "1" ReasoningEpisodeDto
+PastThinkingResponse --> "*" PastThinkingItem
+SimilarIdeasResponse --> "*" SimilarIdeaItem
+DecisionsResponse --> "*" DecisionItem
+SupportResponse --> "*" ExplainEvidenceDto
+ContradictionsResponse --> "*" ContradictionPair
+PatternsResponse --> "*" PatternBucket
+ResolveApprovalResponse --> "1" ApprovalRequestDto
+ListApprovalsResponse --> "*" ApprovalRequestDto
+@enduml

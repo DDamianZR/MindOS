@@ -1,0 +1,176 @@
+@startuml
+!include ../_tema.iuml
+title MindOS — Modelo de dominio (Knowledge Graph + Thinking Graph)
+
+hide empty methods
+skinparam nodesep 45
+skinparam ranksep 55
+
+package "Knowledge Graph (qué se sabe)" {
+
+  class CognitiveObject <<entidad>> {
+    + id : UUID «v7»
+    + object_type : ObjectType
+    + created_at : datetime
+  }
+
+  class ObjectVersion <<inmutable>> {
+    + id : UUID «v7»
+    + version : int
+    + title : str
+    + content : str
+    + embedding : vector[768]
+    + metadata : dict
+    + author : str
+    + created_at : datetime
+    .. atributos cognitivos ..
+    + confidence : float [0..1]
+    + importance : float [0..1]
+    + salience : float [0..1]
+    + status : ObjectStatus
+    + evidence : EvidenceItem [*]
+    .. soft-delete ..
+    + tombstoned_at : datetime [0..1]
+  }
+
+  class EvidenceItem <<valor>> {
+    + node_id : UUID [0..1]
+    + url : str [0..1]
+    + quote : str [0..1]
+    + weight : float
+  }
+
+  class Source <<procedencia>> {
+    + id : UUID
+    + kind : SourceKind
+    + uri : str [0..1]
+    + raw_ref : str [0..1]
+    + captured_at : datetime
+    + metadata : dict
+  }
+
+  class Relation <<bitemporal>> {
+    + relation_type : RelationType
+    + valid_from : datetime
+    + valid_to : datetime [0..1]
+    + metadata : dict
+  }
+}
+
+package "Thinking Graph (cómo se llegó)" {
+
+  class ReasoningEpisode {
+    + id : UUID «= correlation_id»
+    + goal : str
+    + agent : str
+    + status : EpisodeStatus
+    + started_at : datetime
+    + ended_at : datetime [0..1]
+    + final_output : str [0..1]
+  }
+
+  class ReasoningStep {
+    + id : UUID
+    + step_index : int
+    + kind : StepKind
+    + input : str [0..1]
+    + output : str [0..1]
+    + capability_name : str [0..1]
+    + approved : bool [0..1]
+    + feedback : str [0..1]
+    + created_at : datetime
+  }
+}
+
+class EventLogEntry <<append-only>> {
+  + event_id : UUID
+  + event_type : str
+  + payload : dict
+  + logged_at : datetime
+}
+
+enum ObjectType {
+  NOTE · IDEA · DOCUMENT
+  CONVERSATION · CONCEPT
+  PERSON · PROJECT · TASK
+  RESOURCE · TECHNOLOGY
+  EVENT · OBSERVATION
+  EXPERIENCE
+  .. Thinking Graph ..
+  QUESTION · HYPOTHESIS
+  INVESTIGATION · EVIDENCE
+  DECISION · OUTCOME
+  LEARNING · FACT · INSIGHT
+}
+
+enum ObjectStatus {
+  DRAFT
+  ACTIVE
+  HYPOTHESIS
+  FACT
+  SUPERSEDED
+  ARCHIVED
+}
+
+enum RelationType {
+  PART_OF · RELATED_TO
+  DERIVED_FROM · SUPPORTS
+  CONTRADICTS · CAUSED_BY
+  DUPLICATE_OF · MENTIONS
+  ANSWERS · EVIDENCES
+  DECIDES · LEADS_TO
+  CUSTOM
+}
+
+enum SourceKind {
+  WHATSAPP · PDF · IMAGE
+  AUDIO · WEB · CLI
+  API · AGENT
+}
+
+enum EpisodeStatus <<str>> {
+  running
+  completed
+  failed
+  pending_approval
+  rejected
+}
+
+enum StepKind <<str>> {
+  plan · replan
+  execute · review
+  conclude
+}
+
+' ── Asociaciones ──
+CognitiveObject "1" *-- "1..*" ObjectVersion : versions >
+ObjectVersion "0..1" <-- "0..1" ObjectVersion : parent_version\n(lineaje)
+ObjectVersion "*" --> "0..1" Source : source >
+ObjectVersion *-- "*" EvidenceItem
+
+CognitiveObject "1" -- "*" CognitiveObject : source / target >
+(CognitiveObject, CognitiveObject) .. Relation
+
+ReasoningEpisode "1" *-- "*" ReasoningStep : steps >\n{ordered by step_index}
+ReasoningStep "*" --> "*" CognitiveObject : knowledge_refs\n(cita / crea) >
+
+' ── Tipos ──
+CognitiveObject ..> ObjectType
+ObjectVersion ..> ObjectStatus
+Relation ..> RelationType
+Source ..> SourceKind
+ReasoningEpisode ..> EpisodeStatus
+ReasoningStep ..> StepKind
+
+note bottom of ObjectVersion
+  Nunca hay borrado físico: cada cambio crea una
+  versión nueva (padre = versión previa) y archivar
+  solo marca ""tombstoned_at"" en la versión vigente.
+end note
+
+note right of Relation
+  Consulta "as-of": vigente en t si
+  valid_from ≤ t < valid_to (o valid_to nulo).
+end note
+
+@enduml

@@ -1,0 +1,53 @@
+@startuml
+!include ../_tema.iuml
+title MindOS — Casos de uso: captura de conocimiento
+
+left to right direction
+
+actor "Dueño de MindOS" as owner
+actor "Asistente de IA\n(cliente MCP)" as assistant
+
+rectangle "MindOS" {
+  usecase "Capturar por WhatsApp" as UC_wa
+  usecase "Capturar sin conexión\n(cola offline de la PWA)" as UC_offline
+  usecase "Capturar conocimiento\n(CLI · REST · Dashboard · MCP)" as UC_capture
+  usecase "Extraer texto del adjunto\n(OCR / transcripción)" as UC_extract
+  usecase "Deduplicar\nsemánticamente" as UC_dedup
+  usecase "Registrar procedencia\n(Source)" as UC_prov
+  usecase "Auto-enlazar con\nconocimiento existente" as UC_link
+  usecase "Detectar\ncontradicciones" as UC_contra
+  usecase "Responder la captura\nsi es una pregunta" as UC_answer
+}
+
+actor "WhatsApp" as whatsapp <<sistema>>
+actor "Ollama\n(LLM + embeddings)" as ollama <<sistema>>
+
+owner --> UC_wa
+owner --> UC_offline
+owner --> UC_capture
+assistant --> UC_capture
+
+UC_wa ..> UC_capture : <<extend>>
+UC_offline ..> UC_capture : <<extend>>
+UC_capture <.. UC_extract : <<extend>>\nsi trae imagen,\nPDF o audio
+UC_capture ..> UC_dedup : <<include>>
+UC_capture ..> UC_prov : <<include>>
+UC_capture ..> UC_link : <<include>>
+UC_capture <.. UC_contra : <<extend>>\nsi es fact /\nhypothesis
+UC_capture <.. UC_answer : <<extend>>\nsi el LLM la\nclasifica como pregunta
+
+UC_wa -- whatsapp
+UC_dedup -- ollama
+UC_link -- ollama
+UC_contra -- ollama
+UC_answer -- ollama
+
+note bottom of UC_capture
+  CLI, REST, Dashboard/PWA y WhatsApp publican el mismo
+  ""MessageReceivedEvent"" → pipeline completo.
+  El MCP llama directo a ""POST /memory/ingest"":
+  dedup + procedencia + contradicciones, pero
+  sin auto-enlazado ni respuesta a preguntas.
+end note
+
+@enduml

@@ -1,0 +1,63 @@
+@startuml classes_comms
+!include ../../src/_tema.iuml
+title comms — clases (generado con pyreverse)
+set namespaceSeparator none
+class "CommunicationInboundPort" as comms.src.application.ports.communication.CommunicationInboundPort {
+  {abstract}receive(provider: str, sender_id: str, recipient_id: str, text: str, message_id: str, media_url: str | None, metadata: dict[str, Any] | None) -> str
+}
+class "CommunicationOutboundPort" as comms.src.application.ports.communication.CommunicationOutboundPort {
+  {abstract}send(recipient_id: str, text: str) -> dict[str, Any]
+}
+class "Config" as comms.src.config.Settings.Config {
+  env_file : str
+  env_file_encoding : str
+}
+class "EventBusInboundHandler" as comms.src.infrastructure.adapters.event_bus_inbound_handler.EventBusInboundHandler {
+  event_bus
+  stream_name : str
+  receive(provider: str, sender_id: str, recipient_id: str, text: str, message_id: str, media_url: str | None, metadata: dict[str, Any] | None) -> str
+}
+class "InboundMessageRequest" as comms.src.main.InboundMessageRequest {
+  media_url : str | None
+  message_id : str | None
+  metadata : dict[str, Any]
+  provider : str
+  recipient_id : str
+  sender_id : str
+  text : str
+}
+class "InboundMessageResponse" as comms.src.main.InboundMessageResponse {
+  message_id : str
+  provider : str
+  status : str
+}
+class "OutboundMessageRequest" as comms.src.main.OutboundMessageRequest {
+  message_id : str | None
+  provider : str
+  recipient_id : str
+  text : str
+}
+class "OutboundMessageResponse" as comms.src.main.OutboundMessageResponse {
+  delivered : bool
+  message_id : str
+  provider : str
+  status : str
+}
+class "Settings" as comms.src.config.Settings {
+  CLI_TARGET_URL : str
+  INBOUND_STREAM : str
+  MINDOS_API_KEY : str
+  MINDOS_ENV : str
+  OUTBOUND_STREAM : str
+  REDIS_URL : str
+  SERVICE_NAME : str
+  WHATSAPP_URL : str
+}
+class "WhatsAppOutboundAdapter" as comms.src.infrastructure.adapters.whatsapp_outbound_adapter.WhatsAppOutboundAdapter {
+  base_url
+  http_client
+  send(recipient_id: str, text: str) -> dict[str, Any]
+}
+comms.src.infrastructure.adapters.event_bus_inbound_handler.EventBusInboundHandler --|> comms.src.application.ports.communication.CommunicationInboundPort
+comms.src.infrastructure.adapters.whatsapp_outbound_adapter.WhatsAppOutboundAdapter --|> comms.src.application.ports.communication.CommunicationOutboundPort
+@enduml

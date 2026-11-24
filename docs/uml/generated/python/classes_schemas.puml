@@ -1,0 +1,472 @@
+@startuml classes_schemas
+!include ../../src/_tema.iuml
+title schemas — clases (generado con pyreverse)
+set namespaceSeparator none
+class "AppendStepRequest" as schemas.mindos_schemas.api.v1.thinking_dto.AppendStepRequest {
+  approved : bool | None
+  capability_name : str | None
+  feedback : str | None
+  input : str | None
+  kind : Literal
+  knowledge_refs : list[UUID]
+  output : str | None
+  step_id : UUID
+  step_index : int
+}
+class "ApprovalRequestDto" as schemas.mindos_schemas.api.v1.approval_dto.ApprovalRequestDto {
+  capability_name : str
+  created_at : datetime
+  episode_id : UUID
+  id : UUID
+  inputs : dict[str, Any]
+  reply_to : dict[str, str] | None
+  resolved_at : datetime | None
+  result_output : str | None
+  status : str
+  step_id : int
+}
+class "ArchiveNodeResponse" as schemas.mindos_schemas.api.v1.memory_dto.ArchiveNodeResponse {
+  archived : bool
+  node_id : UUID
+}
+class "Capability" as schemas.mindos_schemas.capabilities.Capability {
+  description : str
+  endpoint_path : str
+  name : str
+  parameters_schema : dict[str, Any]
+  provider_service : str
+  requires_approval : bool
+}
+class "CloseEpisodeRequest" as schemas.mindos_schemas.api.v1.thinking_dto.CloseEpisodeRequest {
+  final_output : str | None
+  status : Literal
+}
+class "CloudEvent" as schemas.mindos_schemas.events.base.CloudEvent {
+  correlation_id : UUID
+  data : T
+  datacontenttype : str
+  id : UUID
+  source : str
+  specversion : str
+  time : datetime
+  type : str
+}
+class "ContextBundle" as schemas.mindos_schemas.api.v1.memory_dto.ContextBundle {
+  citations : dict[str, 'ContextFragment']
+  fragments : list[ContextFragment]
+  query : str
+  relations_summary : list[str]
+  timeline : list[ContextTimelineEntry]
+  to_prompt() -> str
+}
+class "ContextFragment" as schemas.mindos_schemas.api.v1.memory_dto.ContextFragment {
+  citation_label : str
+  confidence : float
+  content : str
+  importance : float
+  node_id : UUID
+  object_type : ObjectType | None
+  recency : float
+  score : float
+  similarity : float
+  source_id : UUID | None
+  title : str
+  version : int
+  via_graph : bool
+}
+class "ContextRequest" as schemas.mindos_schemas.api.v1.memory_dto.ContextRequest {
+  depth : int
+  limit : int
+  query : str
+}
+class "ContextTimelineEntry" as schemas.mindos_schemas.api.v1.memory_dto.ContextTimelineEntry {
+  created_at : datetime
+  node_id : UUID
+  title : str
+  version : int
+}
+class "ContradictionDetectedEventData" as schemas.mindos_schemas.events.v1.memory_events.ContradictionDetectedEventData {
+  confidence : float
+  node_a_id : UUID
+  node_b_id : UUID
+  rationale : str
+}
+class "ContradictionPair" as schemas.mindos_schemas.api.v1.cognitive_dto.ContradictionPair {
+  confidence : float | None
+  node_a_id : UUID
+  node_a_title : str
+  node_b_id : UUID
+  node_b_title : str
+  rationale : str | None
+}
+class "ContradictionScanResponse" as schemas.mindos_schemas.api.v1.memory_dto.ContradictionScanResponse {
+  contradictions_detected : int
+  nodes_checked : int
+}
+class "ContradictionsResponse" as schemas.mindos_schemas.api.v1.cognitive_dto.ContradictionsResponse {
+  contradictions : list[ContradictionPair]
+  topic : str
+}
+class "CreateEpisodeRequest" as schemas.mindos_schemas.api.v1.thinking_dto.CreateEpisodeRequest {
+  agent : str
+  correlation_id : UUID
+  episode_id : UUID
+  goal : str
+}
+class "CreateRelationRequest" as schemas.mindos_schemas.api.v1.memory_dto.CreateRelationRequest {
+  metadata : dict[str, Any]
+  relation_type : str
+  source_id : UUID
+  target_id : UUID
+}
+class "CreateRelationResponse" as schemas.mindos_schemas.api.v1.memory_dto.CreateRelationResponse {
+  custom_relation_type : str | None
+  relation_type
+  source_id : UUID
+  target_id : UUID
+}
+class "DecisionItem" as schemas.mindos_schemas.api.v1.cognitive_dto.DecisionItem {
+  content : str
+  created_at : datetime
+  decides_node_ids : list[UUID]
+  evidence_node_ids : list[UUID]
+  node_id : UUID
+  rationale : str | None
+  title : str
+}
+class "DecisionsResponse" as schemas.mindos_schemas.api.v1.cognitive_dto.DecisionsResponse {
+  decisions : list[DecisionItem]
+  topic : str
+}
+class "EvidenceItem" as schemas.mindos_schemas.api.v1.memory_dto.EvidenceItem {
+  node_id : UUID | None
+  quote : str | None
+  url : str | None
+  weight : float
+}
+class "ExplainEpisodeResponse" as schemas.mindos_schemas.api.v1.thinking_dto.ExplainEpisodeResponse {
+  episode
+  narrative : list[str]
+}
+class "ExplainEvidenceDto" as schemas.mindos_schemas.api.v1.thinking_dto.ExplainEvidenceDto {
+  confidence : float
+  content : str
+  importance : float
+  node_id : UUID
+  object_type : str | None
+  relation_type : str
+  source : SourceDto | None
+  supporting : list['ExplainEvidenceDto']
+  title : str
+}
+class "ExplainNodeResponse" as schemas.mindos_schemas.api.v1.thinking_dto.ExplainNodeResponse {
+  content : str
+  episodes : list[ReasoningEpisodeDto]
+  node_id : UUID
+  object_type : str | None
+  supporting_evidence : list[ExplainEvidenceDto]
+  title : str
+}
+class "GeneratePlanRequest" as schemas.mindos_schemas.api.v1.agent_dto.GeneratePlanRequest {
+  context : str
+  goal : str
+}
+class "GeneratePlanResponse" as schemas.mindos_schemas.api.v1.agent_dto.GeneratePlanResponse {
+  goal : str
+  plan_id : UUID
+  steps : list[PlanStep]
+}
+class "GetEpisodesByNodeResponse" as schemas.mindos_schemas.api.v1.thinking_dto.GetEpisodesByNodeResponse {
+  episodes : list[ReasoningEpisodeDto]
+  node_id : UUID
+}
+class "GetNodeHistoryResponse" as schemas.mindos_schemas.api.v1.memory_dto.GetNodeHistoryResponse {
+  node_id : UUID
+  object_type
+  versions : list[NodeVersionDto]
+}
+class "GetNodeNeighborsResponse" as schemas.mindos_schemas.api.v1.memory_dto.GetNodeNeighborsResponse {
+  depth : int
+  neighbors : list[NeighborEdgeDto]
+  node_id : UUID
+}
+class "GetNodeProvenanceResponse" as schemas.mindos_schemas.api.v1.memory_dto.GetNodeProvenanceResponse {
+  chain : list[VersionProvenanceDto]
+  node_id : UUID
+}
+class "IngestKnowledgeRequest" as schemas.mindos_schemas.api.v1.memory_dto.IngestKnowledgeRequest {
+  author : str
+  confidence : float
+  content : str
+  evidence : list[EvidenceItem]
+  importance : float
+  metadata : dict[str, Any]
+  node_id : UUID | None
+  object_type
+  on_duplicate : Literal['link', 'new_version', 'force_new']
+  source : SourceInput | None
+  status
+  title : str
+}
+class "IngestKnowledgeResponse" as schemas.mindos_schemas.api.v1.memory_dto.IngestKnowledgeResponse {
+  author : str
+  confidence : float
+  created_at : datetime
+  duplicate_of : UUID | None
+  duplicate_score : float | None
+  importance : float
+  node_id : UUID
+  object_type
+  status
+  title : str
+  version : int
+}
+class "KnowledgeArchivedEventData" as schemas.mindos_schemas.events.v1.memory_events.KnowledgeArchivedEventData {
+  node_id : UUID
+}
+class "KnowledgeCreatedEventData" as schemas.mindos_schemas.events.v1.memory_events.KnowledgeCreatedEventData {
+  author : str
+  node_id : UUID
+  object_type
+  title : str
+  version : int
+}
+class "KnowledgeUpdatedEventData" as schemas.mindos_schemas.events.v1.memory_events.KnowledgeUpdatedEventData {
+  author : str
+  node_id : UUID
+  parent_version_id : UUID | None
+  title : str
+  version : int
+}
+class "ListApprovalsResponse" as schemas.mindos_schemas.api.v1.approval_dto.ListApprovalsResponse {
+  approvals : list[ApprovalRequestDto]
+}
+class "MessageReceivedEventData" as schemas.mindos_schemas.events.v1.communication_events.MessageReceivedEventData {
+  media_url : str | None
+  message_id : str
+  metadata : dict[str, Any]
+  provider : str
+  recipient_id : str
+  sender_id : str
+  text : str
+}
+class "MessageSentEventData" as schemas.mindos_schemas.events.v1.communication_events.MessageSentEventData {
+  error_message : str | None
+  message_id : str
+  provider : str
+  recipient_id : str
+  status : str
+  text : str
+}
+class "NeighborEdgeDto" as schemas.mindos_schemas.api.v1.memory_dto.NeighborEdgeDto {
+  metadata : dict[str, Any]
+  relation_type : str
+  source_id : UUID
+  target_id : UUID
+}
+class "NodeVersionDto" as schemas.mindos_schemas.api.v1.memory_dto.NodeVersionDto {
+  author : str
+  confidence : float
+  content : str
+  created_at : datetime
+  evidence : list[EvidenceItem]
+  importance : float
+  parent_version_id : UUID | None
+  salience : float
+  status
+  title : str
+  tombstoned_at : datetime | None
+  version : int
+}
+class "ObjectStatus" as schemas.mindos_schemas.domain.object_type.ObjectStatus {
+  name
+}
+class "ObjectType" as schemas.mindos_schemas.domain.object_type.ObjectType {
+  name
+}
+class "PastThinkingItem" as schemas.mindos_schemas.api.v1.cognitive_dto.PastThinkingItem {
+  as_of_created_at : datetime
+  content : str
+  node_id : UUID
+  object_type : str | None
+  similarity : float
+  title : str
+  version : int
+}
+class "PastThinkingResponse" as schemas.mindos_schemas.api.v1.cognitive_dto.PastThinkingResponse {
+  at : datetime
+  items : list[PastThinkingItem]
+  topic : str
+}
+class "PatternBucket" as schemas.mindos_schemas.api.v1.cognitive_dto.PatternBucket {
+  count : int
+  object_type : str
+  period : str
+}
+class "PatternsResponse" as schemas.mindos_schemas.api.v1.cognitive_dto.PatternsResponse {
+  buckets : list[PatternBucket]
+  most_common_type : str | None
+  total_nodes : int
+}
+class "PlanStep" as schemas.mindos_schemas.api.v1.agent_dto.PlanStep {
+  actual_output : str | None
+  capability_name : str | None
+  expected_output : str
+  status : str
+  step_id : int
+  task : str
+}
+class "ReasoningEpisodeDto" as schemas.mindos_schemas.api.v1.thinking_dto.ReasoningEpisodeDto {
+  agent : str
+  correlation_id : UUID
+  ended_at : datetime | None
+  final_output : str | None
+  goal : str
+  id : UUID
+  started_at : datetime
+  status : str
+  steps : list[ReasoningStepDto]
+}
+class "ReasoningStepDto" as schemas.mindos_schemas.api.v1.thinking_dto.ReasoningStepDto {
+  approved : bool | None
+  capability_name : str | None
+  created_at : datetime
+  episode_id : UUID
+  feedback : str | None
+  id : UUID
+  input : str | None
+  kind : str
+  knowledge_refs : list[UUID]
+  output : str | None
+  step_index : int
+}
+class "RegisterCapabilitiesRequest" as schemas.mindos_schemas.capabilities.RegisterCapabilitiesRequest {
+  capabilities : list[Capability]
+}
+class "RegisterCapabilitiesResponse" as schemas.mindos_schemas.capabilities.RegisterCapabilitiesResponse {
+  registered_names : list[str]
+  success : bool
+}
+class "RegisterDecisionRequest" as schemas.mindos_schemas.api.v1.cognitive_dto.RegisterDecisionRequest {
+  affected_node_ids : list[UUID]
+  author : str
+  confidence : float
+  content : str
+  evidence_node_ids : list[UUID]
+  importance : float
+  rationale : str
+  title : str
+}
+class "RegisterDecisionResponse" as schemas.mindos_schemas.api.v1.cognitive_dto.RegisterDecisionResponse {
+  created_at : datetime
+  node_id : UUID
+  rationale : str
+  title : str
+  version : int
+}
+class "RelationCreatedEventData" as schemas.mindos_schemas.events.v1.memory_events.RelationCreatedEventData {
+  metadata : dict[str, Any]
+  relation_type : str
+  source_id : UUID
+  target_id : UUID
+}
+class "RelationDeletedEventData" as schemas.mindos_schemas.events.v1.memory_events.RelationDeletedEventData {
+  relation_type : str
+  source_id : UUID
+  target_id : UUID
+}
+class "RelationType" as schemas.mindos_schemas.domain.relation_type.RelationType {
+  name
+}
+class "ResolveApprovalRequest" as schemas.mindos_schemas.api.v1.approval_dto.ResolveApprovalRequest {
+  approved : bool
+  resolved_by : str | None
+}
+class "ResolveApprovalResponse" as schemas.mindos_schemas.api.v1.approval_dto.ResolveApprovalResponse {
+  approval
+  executed : bool
+}
+class "ReviewStepRequest" as schemas.mindos_schemas.api.v1.agent_dto.ReviewStepRequest {
+  actual_output : str
+  expected_output : str
+  plan_id : UUID
+  step_id : int
+  task : str
+}
+class "ReviewStepResponse" as schemas.mindos_schemas.api.v1.agent_dto.ReviewStepResponse {
+  approved : bool
+  feedback : str | None
+}
+class "SearchKnowledgeResponse" as schemas.mindos_schemas.api.v1.memory_dto.SearchKnowledgeResponse {
+  query : str
+  results : list[SearchResultItem]
+}
+class "SearchResultItem" as schemas.mindos_schemas.api.v1.memory_dto.SearchResultItem {
+  confidence : float
+  content : str
+  importance : float
+  metadata : dict[str, Any]
+  node_id : UUID
+  object_type : ObjectType | None
+  score : float
+  status
+  title : str
+  version : int
+}
+class "SimilarIdeaItem" as schemas.mindos_schemas.api.v1.cognitive_dto.SimilarIdeaItem {
+  content : str
+  created_at : datetime
+  node_id : UUID
+  object_type : str
+  similarity : float
+  title : str
+}
+class "SimilarIdeasResponse" as schemas.mindos_schemas.api.v1.cognitive_dto.SimilarIdeasResponse {
+  items : list[SimilarIdeaItem]
+  node_id : UUID
+}
+class "SourceDto" as schemas.mindos_schemas.api.v1.memory_dto.SourceDto {
+  captured_at : datetime
+  id : UUID
+  kind
+  metadata : dict[str, Any]
+  raw_ref : str | None
+  uri : str | None
+}
+class "SourceInput" as schemas.mindos_schemas.api.v1.memory_dto.SourceInput {
+  kind
+  metadata : dict[str, Any]
+  raw_ref : str | None
+  uri : str | None
+}
+class "SourceKind" as schemas.mindos_schemas.domain.source.SourceKind {
+  name
+}
+class "SupportResponse" as schemas.mindos_schemas.api.v1.cognitive_dto.SupportResponse {
+  content : str
+  node_id : UUID
+  object_type : str | None
+  support : list[ExplainEvidenceDto]
+  title : str
+}
+class "TimeTravelRelationDto" as schemas.mindos_schemas.api.v1.memory_dto.TimeTravelRelationDto {
+  relation_type : str
+  source_id : UUID
+  target_id : UUID
+}
+class "TimeTravelResponse" as schemas.mindos_schemas.api.v1.memory_dto.TimeTravelResponse {
+  at : datetime
+  found : bool
+  node_id : UUID
+  relations : list[TimeTravelRelationDto]
+  version : NodeVersionDto | None
+}
+class "VersionProvenanceDto" as schemas.mindos_schemas.api.v1.memory_dto.VersionProvenanceDto {
+  author : str
+  created_at : datetime
+  source : SourceDto | None
+  version : int
+}
+schemas.mindos_schemas.api.v1.approval_dto.ResolveApprovalResponse --> schemas.mindos_schemas.api.v1.approval_dto.ApprovalRequestDto : approval
+schemas.mindos_schemas.api.v1.thinking_dto.ExplainEpisodeResponse --> schemas.mindos_schemas.api.v1.thinking_dto.ReasoningEpisodeDto : episode
+@enduml

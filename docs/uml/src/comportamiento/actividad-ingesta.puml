@@ -1,0 +1,62 @@
+@startuml
+!include ../_tema.iuml
+title Actividad — POST /api/v1/memory/ingest (Memory Service)
+
+start
+:Propagar o generar correlation_id (uuid7);
+:vector = embed_query(content)\n(una sola vez: dedup + upsert);
+
+if (¿node_id nulo y on_duplicate ≠ force_new?) then (sí)
+  :Buscar vecino más cercano en pgvector;
+  if (¿score ≥ DEDUP_SIMILARITY_THRESHOLD\ny el candidato no está archivado?) then (sí)
+    :duplicate_of = candidato;
+  endif
+endif
+
+if (¿node_id explícito?) then (sí)
+  :Usar node_id recibido;
+elseif (¿duplicado y on_duplicate = new_version?) then (sí)
+  :node_id = duplicate_of;
+else (no)
+  :node_id = uuid7();
+endif
+
+:save_node(node_id, object_type);
+:next_version = última + 1\nparent_version_id = versión previa;
+
+if (¿trae source?) then (sí)
+  if (¿existe Source con (kind, uri)?) then (sí)
+    :Reutilizar Source;
+  else (no)
+    :save_source(...);
+  endif
+endif
+
+:save_node_version(...)\n(confianza, importancia, estado, evidencia, procedencia);
+:vector_store.upsert(node_id, vector);
+
+if (¿next_version = 1?) then (sí)
+  :evento = knowledge.created;
+else (no)
+  :evento = knowledge.updated;
+endif
+:save_event_log(evento);
+
+if (¿duplicado y on_duplicate = link?) then (sí)
+  :save_relation(DUPLICATE_OF)\n+ event_log relation.created;
+endif
+
+:COMMIT (conocimiento + relación + event_log atómicos);
+:Publicar eventos en Redis (best-effort);
+
+if (¿object_type ∈ {fact, hypothesis}?) then (sí)
+  :ContradictionDetectorService\n.check_node_for_contradictions();
+  while (¿por cada contradicción confirmada por el LLM?) is (sí)
+    :event_log + publicar contradiction.detected;
+  endwhile (no quedan)
+endif
+
+:201 IngestKnowledgeResponse\n{node_id, version, duplicate_of, duplicate_score};
+stop
+
+@enduml

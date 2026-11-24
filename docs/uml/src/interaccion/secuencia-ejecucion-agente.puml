@@ -1,0 +1,102 @@
+@startuml
+!include ../_tema.iuml
+title Secuencia — Ejecución de una meta (Planner → Executor → Reviewer)
+
+autonumber "<b>[00]"
+skinparam responseMessageBelowArrow true
+
+participant "Cliente\n(Gateway o pipeline)" as client
+box "Agents Service" #F1F5F9
+  participant "main.execute_agent_goal" as main
+  participant "PlannerExecutorReviewerGraph\n(LangGraph)" as graph
+  participant "LlmPlanner /\nLlmReviewer" as llm_roles
+  participant "CapabilityExecutor" as executor
+  participant "HttpReasoningRecorder" as recorder
+end box
+participant "Memory Service" as memory
+participant "Ollama" as ollama
+participant "Comms Service" as comms
+
+client -> main : POST /api/v1/agents/execute?goal=…\n[&correlation_id][&reply_to_*]
+activate main
+main -> main : corr_id = correlation_id ?? uuid7()
+
+main -> memory : POST /api/v1/memory/context {query: goal, limit: 3, depth: 1}
+memory --> main : ContextBundle (fragmentos citables)
+main -> main : context = bundle.to_prompt()\ncontext_node_ids = [fragment.node_id]
+
+main -> graph : ainvoke(AgentState inicial)
+activate graph
+
+group plan_step
+  graph -> recorder : start_episode(id = corr_id, goal)
+  recorder -> memory : POST /api/v1/thinking/episodes
+  graph -> llm_roles : planner.plan(goal, context, capabilities)
+  llm_roles -> ollama : generate(prompt, json_mode)
+  ollama --> llm_roles : plan JSON
+  llm_roles --> graph : GeneratePlanResponse(steps)
+  graph -> recorder : record_step(kind = plan)
+  recorder -> memory : POST /api/v1/thinking/episodes/{id}/steps
+end
+
+loop por cada PlanStep (mientras no haya error)
+  group execute_step
+    graph -> executor : execute_step(step, inputs, episode_id, reply_to)
+    activate executor
+    alt capacidad con requires_approval
+      executor -> executor : approval_store.create(...)
+      opt reply_to presente
+        executor -> comms : POST /api/v1/comms/outbound\n"MindOS necesita tu aprobación…"
+      end
+      executor --> graph : ExecutionResult(pending_approval)
+    else despacho HTTP real
+      executor -> memory : POST {endpoint_path}?{inputs}\n(p. ej. /api/v1/memory/search)
+      memory --> executor : resultado
+      executor --> graph : ExecutionResult(completed | failed)
+    end
+    deactivate executor
+    graph -> recorder : record_step(kind = execute)
+  end
+
+  break status == pending_approval
+    note over graph : _after_execute → "end"\n(el grafo se detiene sin revisar)
+  end
+
+  group review_step
+    graph -> llm_roles : reviewer.review_step(task, expected, actual)
+    llm_roles -> ollama : generate(prompt, json_mode)
+    llm_roles --> graph : ReviewStepResponse(approved, feedback)
+    graph -> recorder : record_step(kind = review)
+  end
+
+  alt aprobado
+    graph -> graph : current_step_idx++ → "continue" / "end"
+  else rechazado y retries < max_retries
+    graph -> graph : feedback → "replan" (vuelve a plan_step, kind = replan)
+  else rechazado y retries ≥ max_retries
+    graph -> graph : error → "end"
+  end
+end
+
+graph --> main : estado final
+deactivate graph
+
+main -> recorder : close_episode(status = completed | failed | pending_approval)
+recorder -> memory : POST /api/v1/thinking/episodes/{id}/close
+
+opt status == completed
+  main -> memory : POST /api/v1/memory/ingest\n{object_type: outcome, evidence: context_node_ids}
+  loop cada nodo de contexto
+    main -> memory : POST /api/v1/memory/relation (EVIDENCES → outcome)
+  end
+  main -> recorder : record_step(kind = conclude, knowledge_refs = [outcome])
+end
+
+opt reply_to y status ∈ {completed, failed}
+  main -> comms : POST /api/v1/comms/outbound {provider, recipient_id, text}
+end
+
+main --> client : {plan_id, steps, output, correlation_id}
+deactivate main
+
+@enduml

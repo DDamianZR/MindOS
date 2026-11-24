@@ -1,0 +1,18 @@
+@startuml packages_mcp_server
+!include ../../src/_tema.iuml
+title mcp_server — paquetes (generado con pyreverse)
+left to right direction
+set namespaceSeparator none
+package "mcp_server.mindos_mcp.auth_middleware" as mcp_server.mindos_mcp.auth_middleware {
+}
+package "mcp_server.mindos_mcp.config" as mcp_server.mindos_mcp.config {
+}
+package "mcp_server.mindos_mcp.main" as mcp_server.mindos_mcp.main {
+}
+package "mcp_server.mindos_mcp.mindos_client" as mcp_server.mindos_mcp.mindos_client {
+}
+package "mcp_server.mindos_mcp.server" as mcp_server.mindos_mcp.server {
+}
+package "mcp_server.mindos_mcp.tools" as mcp_server.mindos_mcp.tools {
+}
+@enduml

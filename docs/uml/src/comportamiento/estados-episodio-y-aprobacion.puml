@@ -1,0 +1,32 @@
+@startuml
+!include ../_tema.iuml
+title Máquinas de estados — Episodio de razonamiento y Aprobación
+
+state "ReasoningEpisode" as Episode {
+  [*] --> running : start_episode()\n(plan_step inicial)
+  running --> completed : grafo termina sin error\n/ promueve outcome
+  running --> failed : error en plan/execute/review\no máximo de reintentos
+  running --> pending_approval : paso con requires_approval\n/ crea ApprovalRequest
+  pending_approval --> completed : aprobación aprobada\ny capacidad ejecutada
+  pending_approval --> failed : aprobada pero la\ncapacidad falla
+  pending_approval --> rejected : aprobación rechazada
+  completed --> [*]
+  failed --> [*]
+  rejected --> [*]
+}
+
+state "ApprovalRequest" as Approval {
+  [*] --> pending : CapabilityExecutor.execute_step()\n/ notifica por reply_to (si hay)
+  pending --> approved : POST …/resolve {approved: true}\n/ execute_capability_by_name()
+  pending --> rejected_ap : POST …/resolve {approved: false}
+  approved --> [*]
+  rejected_ap --> [*]
+  state "rejected" as rejected_ap
+  note right of approved
+    Resolver una aprobación ya resuelta
+    devuelve 409 y no cambia el estado.
+  end note
+}
+
+
+@enduml

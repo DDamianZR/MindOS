@@ -1,0 +1,16 @@
+@startuml packages_common
+!include ../../src/_tema.iuml
+title common — paquetes (generado con pyreverse)
+left to right direction
+set namespaceSeparator none
+package "common.mindos_common" as common.mindos_common {
+}
+package "common.mindos_common.context" as common.mindos_common.context {
+}
+package "common.mindos_common.event_bus" as common.mindos_common.event_bus {
+}
+package "common.mindos_common.ids" as common.mindos_common.ids {
+}
+package "common.mindos_common.logging" as common.mindos_common.logging {
+}
+@enduml

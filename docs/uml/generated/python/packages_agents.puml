@@ -1,0 +1,90 @@
+@startuml packages_agents
+!include ../../src/_tema.iuml
+title agents — paquetes (generado con pyreverse)
+left to right direction
+set namespaceSeparator none
+package "agents.src.api.approvals_router" as agents.src.api.approvals_router {
+}
+package "agents.src.application.ports" as agents.src.application.ports {
+}
+package "agents.src.application.ports.approval" as agents.src.application.ports.approval {
+}
+package "agents.src.application.ports.llm" as agents.src.application.ports.llm {
+}
+package "agents.src.application.ports.reasoning_recorder" as agents.src.application.ports.reasoning_recorder {
+}
+package "agents.src.application.registry" as agents.src.application.registry {
+}
+package "agents.src.application.registry.capability_registry_port" as agents.src.application.registry.capability_registry_port {
+}
+package "agents.src.config" as agents.src.config {
+}
+package "agents.src.domain.executor" as agents.src.domain.executor {
+}
+package "agents.src.domain.executor.capability_executor" as agents.src.domain.executor.capability_executor {
+}
+package "agents.src.domain.executor.executor" as agents.src.domain.executor.executor {
+}
+package "agents.src.domain.planner" as agents.src.domain.planner {
+}
+package "agents.src.domain.planner.agent_graph" as agents.src.domain.planner.agent_graph {
+}
+package "agents.src.domain.planner.llm_planner" as agents.src.domain.planner.llm_planner {
+}
+package "agents.src.domain.planner.llm_reviewer" as agents.src.domain.planner.llm_reviewer {
+}
+package "agents.src.domain.planner.planner" as agents.src.domain.planner.planner {
+}
+package "agents.src.domain.planner.reviewer" as agents.src.domain.planner.reviewer {
+}
+package "agents.src.infrastructure.adapters" as agents.src.infrastructure.adapters {
+}
+package "agents.src.infrastructure.adapters.http_reasoning_recorder" as agents.src.infrastructure.adapters.http_reasoning_recorder {
+}
+package "agents.src.infrastructure.adapters.in_memory_approval_store" as agents.src.infrastructure.adapters.in_memory_approval_store {
+}
+package "agents.src.infrastructure.adapters.in_memory_capability_registry" as agents.src.infrastructure.adapters.in_memory_capability_registry {
+}
+package "agents.src.infrastructure.adapters.mock_llm" as agents.src.infrastructure.adapters.mock_llm {
+}
+package "agents.src.infrastructure.adapters.noop_reasoning_recorder" as agents.src.infrastructure.adapters.noop_reasoning_recorder {
+}
+package "agents.src.infrastructure.adapters.ollama_llm" as agents.src.infrastructure.adapters.ollama_llm {
+}
+package "agents.src.main" as agents.src.main {
+}
+agents.src.api.approvals_router --> agents.src.config
+agents.src.api.approvals_router --> agents.src.domain.executor.capability_executor
+agents.src.api.approvals_router --> agents.src.infrastructure.adapters.http_reasoning_recorder
+agents.src.api.approvals_router --> agents.src.main
+agents.src.domain.executor.capability_executor --> agents.src.application.ports.approval
+agents.src.domain.executor.capability_executor --> agents.src.application.registry.capability_registry_port
+agents.src.domain.executor.capability_executor --> agents.src.domain.executor.executor
+agents.src.domain.executor.capability_executor --> agents.src.infrastructure.adapters.in_memory_approval_store
+agents.src.domain.planner.agent_graph --> agents.src.application.ports.reasoning_recorder
+agents.src.domain.planner.agent_graph --> agents.src.domain.executor.executor
+agents.src.domain.planner.agent_graph --> agents.src.domain.planner.planner
+agents.src.domain.planner.agent_graph --> agents.src.domain.planner.reviewer
+agents.src.domain.planner.agent_graph --> agents.src.infrastructure.adapters.noop_reasoning_recorder
+agents.src.domain.planner.llm_planner --> agents.src.application.ports.llm
+agents.src.domain.planner.llm_planner --> agents.src.domain.planner.planner
+agents.src.domain.planner.llm_reviewer --> agents.src.application.ports.llm
+agents.src.domain.planner.llm_reviewer --> agents.src.domain.planner.reviewer
+agents.src.infrastructure.adapters.http_reasoning_recorder --> agents.src.application.ports.reasoning_recorder
+agents.src.infrastructure.adapters.in_memory_approval_store --> agents.src.application.ports.approval
+agents.src.infrastructure.adapters.in_memory_capability_registry --> agents.src.application.registry.capability_registry_port
+agents.src.infrastructure.adapters.mock_llm --> agents.src.application.ports.llm
+agents.src.infrastructure.adapters.noop_reasoning_recorder --> agents.src.application.ports.reasoning_recorder
+agents.src.infrastructure.adapters.ollama_llm --> agents.src.application.ports.llm
+agents.src.main --> agents.src.api.approvals_router
+agents.src.main --> agents.src.config
+agents.src.main --> agents.src.domain.executor.capability_executor
+agents.src.main --> agents.src.domain.planner.agent_graph
+agents.src.main --> agents.src.domain.planner.llm_planner
+agents.src.main --> agents.src.domain.planner.llm_reviewer
+agents.src.main --> agents.src.infrastructure.adapters.http_reasoning_recorder
+agents.src.main --> agents.src.infrastructure.adapters.in_memory_approval_store
+agents.src.main --> agents.src.infrastructure.adapters.in_memory_capability_registry
+agents.src.main --> agents.src.infrastructure.adapters.mock_llm
+agents.src.main --> agents.src.infrastructure.adapters.ollama_llm
+@enduml

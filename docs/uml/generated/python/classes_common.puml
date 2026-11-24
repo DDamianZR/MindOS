@@ -1,0 +1,12 @@
+@startuml classes_common
+!include ../../src/_tema.iuml
+title common — clases (generado con pyreverse)
+set namespaceSeparator none
+class "RedisEventBus" as common.mindos_common.event_bus.RedisEventBus {
+  client
+  pool
+  close() -> None
+  publish(stream_name: str, event_type: str, event_data: BaseModel, correlation_id: UUID) -> str
+  subscribe(stream_name: str, group_name: str, consumer_name: str, callback: Callable[[dict[str, Any]], Awaitable[None]]) -> None
+}
+@enduml
