@@ -69,7 +69,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           onKeyDown={handleKeyDown}
           rows={1}
           placeholder="Pregunta a tu memoria o dicta una nota"
-          className="min-h-9 flex-1 resize-none bg-transparent py-1.5 text-body-sm text-obsidian placeholder:text-muted"
+          className="min-h-9 flex-1 resize-none bg-transparent py-1.5 text-body-sm text-obsidian outline-none placeholder:text-muted focus-visible:outline-none"
         />
         {isStreaming ? (
           <Button type="button" variant="ghost" onClick={onStop} className="shrink-0">
