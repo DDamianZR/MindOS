@@ -107,9 +107,13 @@ function prefixSvgIds(root: SVGSVGElement, prefix: string) {
 }
 
 function presentSvg(markup: string, fit: "contain" | "natural"): SVGSVGElement {
-  const doc = new DOMParser().parseFromString(markup, "image/svg+xml");
-  const root = doc.documentElement;
-  if (root.localName !== "svg" || doc.querySelector("parsererror")) {
+  // Analizador HTML, no XML: las etiquetas de los flowcharts van en <foreignObject> como HTML y
+  // traen <br> sin cerrar, que es HTML válido pero XML inválido. Con "image/svg+xml" todos los
+  // diagramas con saltos de línea fallaban. El SVG ya viene saneado por Mermaid (securityLevel strict).
+  const template = document.createElement("template");
+  template.innerHTML = markup.trim();
+  const root = template.content.firstElementChild;
+  if (!root || root.localName !== "svg") {
     throw new Error("El dibujo no devolvió un SVG válido.");
   }
   const imported = document.importNode(root, true);
