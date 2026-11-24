@@ -3,24 +3,48 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
-import { ErrorBanner } from "@/components/ErrorBanner";
 import { EvidenceTree } from "@/components/EvidenceTree";
 import { ObjectTypeBadge } from "@/components/ObjectTypeBadge";
+import { Badge, Button, Card, EmptyState, ErrorNotice, PageHeader, SectionTitle, Skeleton } from "@/components/ui";
 import { ApiError, explainEpisode, explainNode } from "@/lib/api-client";
 import type { ExplainNodeResponse, ReasoningEpisodeDto } from "@/lib/types";
 
+const INPUT_CLASS =
+  "h-10 w-full min-w-0 rounded-md border border-hairline bg-paper px-3 text-body-sm text-obsidian placeholder:text-muted";
+
+const EPISODE_STATUS: Record<string, string> = {
+  running: "En curso",
+  completed: "Terminado",
+  failed: "No se completó",
+  pending_approval: "Esperando tu aprobación",
+  pending: "En espera",
+};
+
+const STEP_KIND: Record<string, string> = {
+  plan: "Plan",
+  execute: "Ejecución",
+  review: "Revisión",
+  replan: "Replanteo",
+  conclude: "Conclusión",
+};
+
+function describeError(err: unknown, fallback: string): string {
+  if (err instanceof ApiError && err.detail) return `${err.detail} ${fallback}`;
+  return fallback;
+}
+
 function EpisodeSummary({ episode }: { episode: ReasoningEpisodeDto }) {
   return (
-    <li className="rounded-md border border-zinc-200 p-2 text-sm dark:border-zinc-800">
-      <div className="flex items-center justify-between">
-        <span className="font-medium text-zinc-900 dark:text-zinc-50">{episode.goal}</span>
-        <span className="text-xs text-zinc-400">{episode.status}</span>
+    <Card as="li">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="text-body-sm font-medium text-obsidian">{episode.goal}</p>
+        <Badge>{EPISODE_STATUS[episode.status] ?? episode.status}</Badge>
       </div>
-      <p className="text-xs text-zinc-400">
-        {episode.agent} · {new Date(episode.started_at).toLocaleString()} · {episode.steps.length} pasos
+      <p className="mt-2 font-mono text-mono-sm text-muted">
+        {episode.agent} · {new Date(episode.started_at).toLocaleString("es")} · {episode.steps.length} pasos
       </p>
-      {episode.final_output && <p className="mt-1 text-zinc-600 dark:text-zinc-400">{episode.final_output}</p>}
-    </li>
+      {episode.final_output && <p className="mt-3 text-body-sm text-slate">{episode.final_output}</p>}
+    </Card>
   );
 }
 
@@ -43,7 +67,7 @@ function ExplainForm() {
       if (explainMode === "node") setNodeResult(await explainNode(id));
       else setEpisodeResult(await explainEpisode(id));
     } catch (err) {
-      setError(err instanceof ApiError ? err.detail : "No se pudo explicar.");
+      setError(describeError(err, "Revisa el identificador e inténtalo de nuevo."));
     } finally {
       setIsLoading(false);
     }
@@ -64,120 +88,225 @@ function ExplainForm() {
     runExplain(inputValue, mode);
   }
 
+  const idLabel = mode === "node" ? "Identificador del recuerdo" : "Identificador del episodio";
+
   return (
     <div>
-      <h1 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">Visor de razonamiento</h1>
-      <p className="mb-4 text-sm text-zinc-500 dark:text-zinc-400">
-        ¿Cómo llegué a esta conclusión? Explora la evidencia (Pregunta → Investigación → … → Aprendizaje) detrás de un
-        nodo, o la traza paso a paso de un episodio de razonamiento.
-      </p>
-
-      <form onSubmit={handleSubmit} className="mb-6 flex gap-2">
-        <select
-          value={mode}
-          onChange={(e) => setMode(e.target.value as "node" | "episode")}
-          className="rounded-md border border-zinc-300 px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-        >
-          <option value="node">Nodo</option>
-          <option value="episode">Episodio</option>
-        </select>
-        <input
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          placeholder={mode === "node" ? "ID del nodo (UUID)" : "ID del episodio (UUID)"}
-          className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm font-mono dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-        />
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
-        >
+      <form
+        onSubmit={handleSubmit}
+        aria-label="Explicar un recuerdo o un episodio"
+        className="flex flex-col gap-4 sm:flex-row sm:items-end"
+      >
+        <div className="flex flex-col gap-1 sm:w-48">
+          <label htmlFor="explain-mode" className="text-caption text-slate">
+            Qué explicar
+          </label>
+          <select
+            id="explain-mode"
+            value={mode}
+            onChange={(e) => setMode(e.target.value as "node" | "episode")}
+            className={INPUT_CLASS}
+          >
+            <option value="node">Un recuerdo</option>
+            <option value="episode">Un episodio</option>
+          </select>
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <label htmlFor="explain-id" className="text-caption text-slate">
+            {idLabel}
+          </label>
+          <input
+            id="explain-id"
+            type="text"
+            required
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder={mode === "node" ? "Cópialo desde Búsqueda" : "Cópialo del episodio"}
+            spellCheck={false}
+            autoCapitalize="off"
+            enterKeyHint="search"
+            className={`${INPUT_CLASS} font-mono text-mono`}
+          />
+        </div>
+        <Button type="submit" disabled={isLoading}>
           {isLoading ? "Explicando…" : "Explicar"}
-        </button>
+        </Button>
       </form>
 
-      <ErrorBanner message={error} />
+      {error && (
+        <div className="mt-6">
+          <ErrorNotice>{error}</ErrorNotice>
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="mt-8" aria-live="polite">
+          <p className="text-caption text-slate">Buscando la explicación. Espera un momento.</p>
+          <Skeleton className="mt-3 h-24 w-full" />
+          <Skeleton className="mt-3 h-40 w-full" />
+        </div>
+      )}
 
       {nodeResult && (
-        <div>
-          <div className="mb-4 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-            <div className="mb-1 flex items-center gap-2">
+        <div className="mt-12">
+          <Card>
+            <div className="flex flex-wrap items-center gap-2">
               <ObjectTypeBadge objectType={nodeResult.object_type} />
-              <span className="font-semibold text-zinc-900 dark:text-zinc-50">{nodeResult.title}</span>
+              <h2 className="text-subheading font-medium text-obsidian">{nodeResult.title}</h2>
             </div>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">{nodeResult.content}</p>
+            {nodeResult.content && (
+              <p className="mt-3 whitespace-pre-wrap text-body-sm text-slate">{nodeResult.content}</p>
+            )}
+          </Card>
+
+          <div className="mt-12">
+            <SectionTitle aside={String(nodeResult.supporting_evidence.length)}>Evidencia de respaldo</SectionTitle>
+            {nodeResult.supporting_evidence.length === 0 ? (
+              <EmptyState
+                title="No hay evidencia registrada."
+                action={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => document.getElementById("explain-id")?.focus()}
+                  >
+                    Probar otro identificador
+                  </Button>
+                }
+              >
+                Este recuerdo no tiene notas de respaldo. Prueba con otro identificador.
+              </EmptyState>
+            ) : (
+              <ul className="space-y-2">
+                {nodeResult.supporting_evidence.map((ev, i) => (
+                  <EvidenceTree key={`${ev.node_id}-${i}`} evidence={ev} depth={0} />
+                ))}
+              </ul>
+            )}
           </div>
 
-          <h2 className="mb-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-            Evidencia de respaldo ({nodeResult.supporting_evidence.length})
-          </h2>
-          {nodeResult.supporting_evidence.length === 0 ? (
-            <p className="mb-6 text-sm text-zinc-400 italic">Sin evidencia registrada.</p>
-          ) : (
-            <ul className="mb-6 space-y-2">
-              {nodeResult.supporting_evidence.map((ev, i) => (
-                <EvidenceTree key={`${ev.node_id}-${i}`} evidence={ev} depth={0} />
-              ))}
-            </ul>
-          )}
-
-          <h2 className="mb-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-            Episodios que lo produjeron/citaron ({nodeResult.episodes.length})
-          </h2>
-          {nodeResult.episodes.length === 0 ? (
-            <p className="text-sm text-zinc-400 italic">Sin episodios asociados.</p>
-          ) : (
-            <ul className="space-y-2">
-              {nodeResult.episodes.map((ep) => (
-                <EpisodeSummary key={ep.id} episode={ep} />
-              ))}
-            </ul>
-          )}
+          <div className="mt-12">
+            <SectionTitle aside={String(nodeResult.episodes.length)}>Episodios que lo produjeron o citaron</SectionTitle>
+            {nodeResult.episodes.length === 0 ? (
+              <EmptyState
+                title="No hay episodios asociados."
+                action={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => document.getElementById("explain-id")?.focus()}
+                  >
+                    Probar otro identificador
+                  </Button>
+                }
+              >
+                Ningún razonamiento guardado produjo o citó este recuerdo.
+              </EmptyState>
+            ) : (
+              <ul className="space-y-3">
+                {nodeResult.episodes.map((ep) => (
+                  <EpisodeSummary key={ep.id} episode={ep} />
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       )}
 
       {episodeResult && (
-        <div>
-          <h2 className="mb-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Narrativa</h2>
-          <ol className="mb-6 list-inside list-decimal space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
-            {episodeResult.narrative.map((line, i) => (
-              <li key={i}>{line}</li>
-            ))}
-          </ol>
+        <div className="mt-12">
+          <SectionTitle aside={String(episodeResult.narrative.length)}>Narrativa</SectionTitle>
+          {episodeResult.narrative.length === 0 ? (
+            <EmptyState
+              title="Este episodio no tiene narrativa."
+              action={
+                <Button type="button" variant="ghost" onClick={() => document.getElementById("explain-id")?.focus()}>
+                  Probar otro identificador
+                </Button>
+              }
+            >
+              Revisa los pasos de abajo o prueba con otro identificador.
+            </EmptyState>
+          ) : (
+            <ol className="list-decimal space-y-2 pl-5 text-body-sm text-obsidian">
+              {episodeResult.narrative.map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ol>
+          )}
 
-          <h2 className="mb-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-            Pasos ({episodeResult.episode.steps.length})
-          </h2>
-          <ul className="space-y-2">
-            {episodeResult.episode.steps.map((step) => (
-              <li key={step.id} className="rounded-md border border-zinc-200 p-2 text-sm dark:border-zinc-800">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-zinc-900 dark:text-zinc-50">
-                    #{step.step_index} · {step.kind}
-                    {step.capability_name && ` (${step.capability_name})`}
-                  </span>
-                  {step.approved !== null && (
-                    <span className={step.approved ? "text-xs text-emerald-600" : "text-xs text-red-600"}>
-                      {step.approved ? "aprobado" : "rechazado"}
-                    </span>
-                  )}
-                </div>
-                {step.input && <p className="mt-1 text-zinc-600 dark:text-zinc-400">→ {step.input}</p>}
-                {step.output && <p className="mt-1 text-zinc-600 dark:text-zinc-400">← {step.output}</p>}
-              </li>
-            ))}
-          </ul>
+          <div className="mt-12">
+            <SectionTitle aside={String(episodeResult.episode.steps.length)}>Pasos</SectionTitle>
+            {episodeResult.episode.steps.length === 0 ? (
+              <EmptyState
+                title="Este episodio no tiene pasos."
+                action={
+                  <Button type="button" variant="ghost" onClick={() => document.getElementById("explain-id")?.focus()}>
+                    Probar otro identificador
+                  </Button>
+                }
+              >
+                Puede que se haya cerrado antes de registrar el razonamiento.
+              </EmptyState>
+            ) : (
+              <ul className="space-y-3">
+                {episodeResult.episode.steps.map((step) => (
+                  <Card as="li" key={step.id}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-body-sm font-medium text-obsidian">
+                        Paso {step.step_index} · {STEP_KIND[step.kind] ?? step.kind}
+                        {step.capability_name && (
+                          <span className="ml-2 font-mono text-mono font-normal text-slate">
+                            {step.capability_name}
+                          </span>
+                        )}
+                      </p>
+                      {step.approved === true && <Badge>Aprobado</Badge>}
+                      {step.approved === false && <Badge>Rechazado</Badge>}
+                    </div>
+                    {step.input && (
+                      <p className="mt-3 text-body-sm text-slate">
+                        <span className="mono-label mr-2 text-muted">Entrada</span>
+                        {step.input}
+                      </p>
+                    )}
+                    {step.output && (
+                      <p className="mt-2 text-body-sm text-slate">
+                        <span className="mono-label mr-2 text-muted">Salida</span>
+                        {step.output}
+                      </p>
+                    )}
+                  </Card>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
+function ExplainFallback() {
+  return (
+    <div aria-live="polite">
+      <p className="text-caption text-slate">Cargando el formulario. Espera un momento.</p>
+      <Skeleton className="mt-3 h-10 w-full" />
+    </div>
+  );
+}
+
 export default function ExplainPage() {
   return (
-    <Suspense>
-      <ExplainForm />
-    </Suspense>
+    <div>
+      <PageHeader
+        title="Razonamiento"
+        continuation="de dónde sale cada conclusión"
+        description="Pega un identificador y mira la evidencia que sostiene esa conclusión."
+      />
+      <Suspense fallback={<ExplainFallback />}>
+        <ExplainForm />
+      </Suspense>
+    </div>
   );
 }
