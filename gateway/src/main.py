@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from collections.abc import Callable
 from uuid import UUID
 
@@ -202,6 +203,22 @@ async def _read_body_capped(request: Request, max_bytes: int) -> bytes:
     return bytes(chunks)
 
 
+# Decisiones que son la razón de ser del human-in-the-loop: resolver una aprobación y activar
+# una rutina que propuso el agente. Una API key de servicio (o un agente que la tenga) no puede
+# tomarlas por la persona; solo un JWT de sesión humana.
+_HUMAN_ONLY_ROUTES = [
+    ("POST", "approvals", re.compile(r"^[^/]+/resolve/?$")),
+    ("POST", "agents", re.compile(r"^routines/[^/]+/activate/?$")),
+]
+
+
+def _requires_human(method: str, service_key: str, rest_of_path: str) -> bool:
+    return any(
+        method == m and service_key == key and pattern.match(rest_of_path)
+        for m, key, pattern in _HUMAN_ONLY_ROUTES
+    )
+
+
 @app.api_route("/api/v1/{service_key}/{rest_of_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def proxy(
     service_key: str,
@@ -222,6 +239,12 @@ async def proxy(
     base_url = SERVICE_ROUTES.get(service_key)
     if not base_url:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Servicio desconocido: '{service_key}'.")
+
+    if _identity == "service" and _requires_human(request.method, service_key, rest_of_path):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Esta acción la tiene que confirmar una persona con su sesión, no una clave de servicio.",
+        )
 
     body = await _read_body_capped(request, settings.MAX_BODY_BYTES)
 
