@@ -1,0 +1,94 @@
+@startuml 00-modelo-dominio
+!include ../_tema.iuml
+title Modelo de dominio de MindOS — vista integrada
+left to right direction
+hide empty members
+
+' Vista conceptual: solo las entidades del negocio y sus asociaciones. Los atributos completos
+' están en los diagramas 01 (conocimiento), 02 (razonamiento) y 03 (comunicación y eventos).
+
+package "Conocimiento (Knowledge Graph)" #F8FAFC {
+  class ObjetoCognitivo <<aggregate root>> {
+    id : UUID <<uuid7>>
+    tipo : ObjectType
+  }
+  class VersionObjeto {
+    numero : int
+    titulo
+    contenido
+    confianza : float
+    importancia : float
+    estado : ObjectStatus
+    archivadoEn : datetime?
+  }
+  class Relacion {
+    tipo : RelationType
+    validoDesde : datetime
+    validoHasta : datetime?
+  }
+  class Fuente {
+    tipo : SourceKind
+    uri
+  }
+  class Evidencia <<value object>> {
+    peso : float
+  }
+}
+
+package "Razonamiento (Thinking Graph)" #F8FAFC {
+  class EpisodioRazonamiento <<aggregate root>> {
+    meta
+    estado
+  }
+  class PasoRazonamiento {
+    indice : int
+    tipo : plan | execute | review | replan | conclude
+  }
+  class SolicitudAprobacion {
+    estado : pending | approved | rejected
+  }
+  class Capacidad {
+    nombre
+    requiereAprobacion : bool
+  }
+}
+
+package "Comunicación" #F8FAFC {
+  class Mensaje {
+    canal : cli | rest | whatsapp
+    texto
+  }
+}
+
+package "Contexto y explicación (vistas derivadas)" #F8FAFC {
+  class ContextoGraphRAG <<read model>>
+  class ArbolExplicacion <<read model>>
+}
+
+ObjetoCognitivo "1" *-- "1..*" VersionObjeto : versiones\n(inmutables)
+VersionObjeto "0..*" --> "0..1" Fuente : proviene de
+VersionObjeto *-- "0..*" Evidencia : respaldada por
+VersionObjeto "1" --> "0..1" VersionObjeto : versión padre
+Evidencia "0..*" ..> "0..1" ObjetoCognitivo : cita
+ObjetoCognitivo "1" <-- "0..*" Relacion : origen
+Relacion "0..*" --> "1" ObjetoCognitivo : destino
+
+EpisodioRazonamiento "1" *-- "0..*" PasoRazonamiento : pasos
+PasoRazonamiento "0..*" ..> "0..*" ObjetoCognitivo : cita / crea\n(knowledgeRefs)
+PasoRazonamiento "0..*" --> "0..1" Capacidad : usa
+SolicitudAprobacion "0..*" --> "1" EpisodioRazonamiento : pausa
+SolicitudAprobacion "0..*" --> "1" Capacidad : difiere
+
+Mensaje "1" ..> "0..*" VersionObjeto : se ingiere como
+Mensaje "1" ..> "0..1" EpisodioRazonamiento : si es pregunta,\ndispara
+EpisodioRazonamiento "1" ..> "0..1" ObjetoCognitivo : concluye en\n(outcome)
+
+ContextoGraphRAG ..> ObjetoCognitivo : fragmentos citables
+ArbolExplicacion ..> Relacion : recorre hacia atrás
+ArbolExplicacion ..> EpisodioRazonamiento : adjunta
+
+legend bottom right
+  Línea continua con rombo = composición · punteada = dependencia/referencia lógica
+  Nada se borra: archivar = tombstone sobre la versión vigente (principio del producto).
+endlegend
+@enduml

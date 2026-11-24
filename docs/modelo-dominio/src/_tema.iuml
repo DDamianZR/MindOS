@@ -1,0 +1,90 @@
+' Tema compartido de los diagramas UML de MindOS.
+' Se incluye desde cada .puml con:  !include ../_tema.iuml
+' (ruta relativa al archivo que incluye; los diagramas viven un nivel por debajo de src/).
+
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam defaultFontSize 12
+skinparam wrapWidth 360
+skinparam maxMessageSize 180
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #475569
+skinparam ArrowFontColor #334155
+skinparam ArrowFontSize 11
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam LegendBackgroundColor #F8FAFC
+skinparam LegendBorderColor #CBD5E1
+skinparam NoteBackgroundColor #FEF9C3
+skinparam NoteBorderColor #CA8A04
+
+skinparam class {
+  BackgroundColor #F8FAFC
+  BorderColor #64748B
+  HeaderBackgroundColor #E2E8F0
+  AttributeFontSize 11
+}
+skinparam stereotypeCBackgroundColor #BFDBFE
+skinparam stereotypeIBackgroundColor #DDD6FE
+skinparam stereotypeABackgroundColor #FDE68A
+skinparam stereotypeEBackgroundColor #BBF7D0
+
+skinparam package {
+  BackgroundColor #FFFFFF
+  BorderColor #94A3B8
+  FontColor #334155
+}
+
+skinparam component {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+}
+
+skinparam node {
+  BackgroundColor #F8FAFC
+  BorderColor #475569
+}
+
+skinparam database {
+  BackgroundColor #ECFDF5
+  BorderColor #059669
+}
+
+skinparam queue {
+  BackgroundColor #FFFBEB
+  BorderColor #D97706
+}
+
+skinparam usecase {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+}
+
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #334155
+}
+
+skinparam sequence {
+  LifeLineBorderColor #94A3B8
+  ParticipantBackgroundColor #EFF6FF
+  ParticipantBorderColor #2563EB
+  ActorBackgroundColor #FFFFFF
+  ActorBorderColor #334155
+  GroupBackgroundColor #F1F5F9
+  GroupBorderColor #94A3B8
+  BoxBackgroundColor #F8FAFC
+  BoxBorderColor #CBD5E1
+}
+
+skinparam activity {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+  DiamondBackgroundColor #FEF3C7
+  DiamondBorderColor #D97706
+}
+
+skinparam state {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+}

@@ -1,0 +1,148 @@
+@startuml 04-servicios-ia-puertos
+!include ../_tema.iuml
+title Servicios de dominio con IA y sus puertos (arquitectura hexagonal de Memory)
+hide empty members
+
+package "Servicios de aplicación (algoritmos de IA)" #F8FAFC {
+  class IngestionPipelineService <<F3-T5>> {
+    - umbralSimilitud = 0.65
+    + manejarEvento(MensajeEntrante)
+    - resolverContenido() : texto, fuente
+    - ingerir() : nodoId
+    - autoEnlazar(nodoId, texto)
+    - preguntarLlmPorRelacion() : tipo?
+    - clasificarEsPregunta(texto) : bool
+    - dispararAgente()
+  }
+
+  class ContradictionDetectorService <<F2-T5>> {
+    + verificarNodo(nodoId, topK = 5,\numbral = 0.65) : Contradiccion[]
+    + ejecutarLote(limite = 200)
+    - preguntarLlmPorContradiccion() : veredicto
+  }
+
+  class ContextBuilderService <<F1-T7 GraphRAG>> {
+    pesoSimilitud = 0.50
+    pesoImportancia = 0.20
+    pesoRecencia = 0.15
+    pesoConfianza = 0.15
+    vidaMediaDias = 30
+    decaimientoGrafo = 0.7
+    + construirContexto(consulta, limite, profundidad) : ContextBundle
+    - puntajeRecencia(creadoEn) : float
+  }
+
+  class ExplainabilityService <<F2-T3>> {
+    + explicarNodo(nodoId, profundidadMax = 3)
+    + explicarEpisodio(episodioId)
+  }
+
+  class CognitiveQueryService <<F2-T4>> {
+    + pensamientoPasado(tema, fecha)
+    + ideasSimilares(nodoId)
+    + decisiones(tema)
+    + respaldo(nodoId)
+    + contradicciones(tema)
+    + patrones()
+  }
+
+  class "construirArbolEvidencia()" as ArbolEvidencia <<función compartida>>
+}
+
+package "Puertos (application/ports)" #F8FAFC {
+  interface DatabasePort {
+    guardarNodo / guardarVersion
+    versionVigente(incluirArchivados)
+    versionEn(t)  «time-travel»
+    guardarRelacion / borrarRelacion
+    relacionesRecursivas(profundidad)  «CTE»
+    relacionesEntrantes(profundidad)
+    guardarFuente / buscarFuente(tipo, uri)
+    guardarEventLog
+  }
+  interface VectorStorePort {
+    upsert(id, embedding, payload)
+    buscar(vector, limite) : VectorSearchResult[]
+  }
+  interface EmbeddingPort {
+    embedQuery(texto) : float[]
+    embedDocuments(textos)
+  }
+  interface LlmPort {
+    generar(prompt, jsonMode)
+    chat(mensajes)
+  }
+  interface OcrPort {
+    extraerTexto(bytes, mime)
+  }
+  interface SttPort {
+    transcribir(bytes, mime)
+  }
+  interface StoragePort {
+    guardar / obtener / borrar
+  }
+  interface ThinkingGraphPort {
+    crearEpisodio / agregarPaso / cerrarEpisodio
+    episodio / episodiosPorNodo
+    recorrerRazonamiento(nodoId)
+  }
+}
+
+package "Adaptadores (infrastructure)" #F8FAFC {
+  class "PostgreSQL + SQLAlchemy\n(Repositories)" as PgRepo
+  class "pgvector" as PgVector
+  class "Ollama\nnomic-embed-text 768d" as OllamaEmb
+  class "Ollama\nqwen3:8b · JSON mode" as OllamaLlm
+  class "Tesseract" as Tesseract
+  class "faster-whisper" as Whisper
+  class "MinIO / FS local" as Minio
+  class "Mocks / InMemory\n(tests)" as Mocks
+}
+
+IngestionPipelineService ..> OcrPort
+IngestionPipelineService ..> SttPort
+IngestionPipelineService ..> StoragePort
+IngestionPipelineService ..> LlmPort : clasificar pregunta,\nconfirmar relación
+IngestionPipelineService ..> ContradictionDetectorService : via /ingest\n(solo fact / hypothesis)
+
+ContradictionDetectorService ..> DatabasePort
+ContradictionDetectorService ..> VectorStorePort
+ContradictionDetectorService ..> EmbeddingPort
+ContradictionDetectorService ..> LlmPort : confirma contradicción
+
+ContextBuilderService ..> VectorStorePort : semillas
+ContextBuilderService ..> DatabasePort : expansión por grafo
+ContextBuilderService ..> EmbeddingPort
+
+ExplainabilityService ..> ArbolEvidencia
+ExplainabilityService ..> ThinkingGraphPort
+CognitiveQueryService ..> ArbolEvidencia
+CognitiveQueryService ..> DatabasePort
+CognitiveQueryService ..> VectorStorePort
+CognitiveQueryService ..> EmbeddingPort
+ArbolEvidencia ..> DatabasePort
+
+DatabasePort <|.. PgRepo
+DatabasePort <|.. Mocks
+VectorStorePort <|.. PgVector
+VectorStorePort <|.. Mocks
+EmbeddingPort <|.. OllamaEmb
+EmbeddingPort <|.. Mocks
+LlmPort <|.. OllamaLlm
+LlmPort <|.. Mocks
+OcrPort <|.. Tesseract
+SttPort <|.. Whisper
+StoragePort <|.. Minio
+ThinkingGraphPort <|.. PgRepo
+
+note bottom of ContradictionDetectorService
+  Patrón común de IA "doble compuerta": (1) filtro barato por similitud vectorial
+  y (2) juicio del LLM. Falla cerrado: ante error o JSON inválido NO se crea la arista.
+  El mismo patrón sirve al auto-enlazado de la ingesta (catálogo de tipos distinto).
+end note
+
+note right of PgRepo
+  Regla hexagonal: domain/ y application/ nunca importan infrastructure/;
+  toda dependencia externa entra por un puerto y sale por un adaptador.
+end note
+@enduml
