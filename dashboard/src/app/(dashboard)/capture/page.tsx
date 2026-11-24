@@ -1,12 +1,15 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useId, useRef, useState, type FormEvent } from "react";
 
-import { ErrorBanner } from "@/components/ErrorBanner";
+import { Button, ErrorNotice, PageHeader, Skeleton } from "@/components/ui";
 import { ApiError, sendInbound } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth";
 import { enqueueCapture, flushQueuedCaptures, listQueuedCaptures } from "@/lib/offline-queue";
+
+const FIELD =
+  "w-full rounded-md border border-hairline bg-paper px-3 py-2 text-body-sm text-obsidian placeholder:text-muted focus:border-obsidian";
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -46,6 +49,10 @@ async function pickUpSharedPayload(): Promise<{ text: string; file: File | null 
 }
 
 function CaptureForm() {
+  const textId = useId();
+  const fileId = useId();
+  const captionId = useId();
+  const sharedId = useId();
   const { username } = useAuth();
   const searchParams = useSearchParams();
   const [text, setText] = useState("");
@@ -100,7 +107,7 @@ function CaptureForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!text.trim() && !file) return;
     setIsSubmitting(true);
@@ -131,70 +138,81 @@ function CaptureForm() {
     }
   }
 
-  return (
-    <div className="mx-auto max-w-xl">
-      <h1 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">Captura rápida</h1>
-      <p className="mb-4 text-sm text-zinc-500 dark:text-zinc-400">
-        Cualquier cosa que anotes aquí entra por el mismo camino que WhatsApp o la CLI: un evento de captura que el
-        pipeline de ingestión procesa (OCR en imágenes/PDF, transcripción en audio) y guarda como Objeto Cognitivo.
-        Instala esta página como app (PWA) para capturar sin conexión o compartir fotos desde otras apps.
-      </p>
+  const fileDescribedBy =
+    [file && isSharedFile ? sharedId : null, fileNeedsCaption ? captionId : null].filter(Boolean).join(" ") ||
+    undefined;
 
+  return (
+    <div className="max-w-[40rem]">
       {pendingCount > 0 && (
-        <div className="mb-4 flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-          <span>{pendingCount} captura(s) esperando conexión para sincronizar.</span>
-          <button onClick={syncPending} className="font-medium underline">
+        <div className="mb-6 flex flex-col items-start gap-3 rounded-md bg-mint px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="status">
+          <p className="text-body-sm text-obsidian">{pendingCount} captura(s) esperando conexión para sincronizar.</p>
+          <Button type="button" variant="ghost" onClick={syncPending}>
             Reintentar ahora
-          </button>
+          </Button>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Escribe una nota…"
-          rows={5}
-          className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-        />
+      <form onSubmit={handleSubmit} method="post" className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={textId} className="text-body-sm font-medium text-obsidian">
+            Nota
+          </label>
+          <textarea
+            id={textId}
+            name="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Una idea, una cita, algo que no quieres olvidar"
+            rows={5}
+            className={FIELD}
+          />
+        </div>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,audio/*,.pdf"
-          onChange={(e) => {
-            setFile(e.target.files?.[0] ?? null);
-            setIsSharedFile(false);
-          }}
-          className="block w-full text-sm text-zinc-600 dark:text-zinc-400"
-        />
-        {/* Un archivo recibido por share_target (F4-T3) no puede reflejarse en el <input>
-            nativo -- los navegadores no permiten asignarle .files por script -- así que sin
-            esto el usuario no tendría forma de saber que sí quedó adjunto. */}
-        {file && isSharedFile && (
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">Adjunto compartido: {file.type || "archivo"}</p>
-        )}
-        {fileNeedsCaption && (
-          <p className="text-xs text-amber-600 dark:text-amber-400">
-            Este tipo de archivo no se transcribe automáticamente: añade una nota en el texto o quedará descartado si
-            llega vacío.
-          </p>
-        )}
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={fileId} className="text-body-sm font-medium text-obsidian">
+            Archivo
+          </label>
+          <input
+            ref={fileInputRef}
+            id={fileId}
+            name="file"
+            type="file"
+            accept="image/*,audio/*,.pdf"
+            aria-describedby={fileDescribedBy}
+            onChange={(e) => {
+              setFile(e.target.files?.[0] ?? null);
+              setIsSharedFile(false);
+            }}
+            className="block w-full max-w-full text-body-sm text-slate file:mr-3 file:h-10 file:rounded-md file:border-0 file:bg-obsidian file:px-4 file:font-mono file:text-mono file:font-medium file:uppercase file:text-paper"
+          />
+          {/* Un archivo recibido por share_target (F4-T3) no puede reflejarse en el <input>
+              nativo -- los navegadores no permiten asignarle .files por script -- así que sin
+              esto el usuario no tendría forma de saber que sí quedó adjunto. */}
+          {file && isSharedFile && (
+            <p id={sharedId} className="text-caption text-muted">
+              Adjunto compartido: {file.type || "archivo"}
+            </p>
+          )}
+          {fileNeedsCaption && (
+            <p id={captionId} className="text-caption text-slate">
+              Este tipo de archivo no se transcribe solo. Añade una nota en el texto. Si llega vacío, se descarta.
+            </p>
+          )}
+        </div>
 
-        <ErrorBanner message={error} />
+        {error && <ErrorNotice>{error} Revisa la conexión y vuelve a intentarlo.</ErrorNotice>}
         {success && (
-          <p className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+          <p role="status" className="rounded-md bg-mint px-4 py-3 text-body-sm text-obsidian">
             {success}
           </p>
         )}
 
-        <button
-          type="submit"
-          disabled={isSubmitting || (!text.trim() && !file)}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
-        >
-          {isSubmitting ? "Enviando…" : "Capturar"}
-        </button>
+        <div>
+          <Button type="submit" disabled={isSubmitting || (!text.trim() && !file)} className="h-10">
+            {isSubmitting ? "Enviando…" : "Capturar"}
+          </Button>
+        </div>
       </form>
     </div>
   );
@@ -202,8 +220,25 @@ function CaptureForm() {
 
 export default function CapturePage() {
   return (
-    <Suspense>
-      <CaptureForm />
-    </Suspense>
+    <div>
+      <PageHeader
+        title="Capturar"
+        continuation="una idea, un archivo, una nota de voz"
+        description="Escribe una nota o adjunta una foto, un PDF o un audio. Sin conexión, se envía cuando vuelva la red."
+      />
+      <Suspense
+        fallback={
+          <div className="relative max-w-[40rem] space-y-3" aria-busy="true">
+            <p className="pointer-events-none absolute m-[-1px] h-px w-px overflow-hidden border-0 p-0 whitespace-nowrap [clip-path:inset(50%)]">
+              Cargando el formulario
+            </p>
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-10 w-40" />
+          </div>
+        }
+      >
+        <CaptureForm />
+      </Suspense>
+    </div>
   );
 }
