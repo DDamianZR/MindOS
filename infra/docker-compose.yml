@@ -93,6 +93,22 @@ services:
     mem_limit: 768m
     networks: [mindos-net]
 
+  # Fase 9: migraciones propias del servicio de agentes (tablas agent_*, versión en
+  # alembic_version_agents). Corre una vez antes de agents, igual que `migrate` para Memory.
+  migrate-agents:
+    build:
+      context: ..
+      dockerfile: agents/Dockerfile
+    container_name: mindos-migrate-agents
+    command: ["alembic", "-c", "agents/alembic.ini", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-mindos_user}:${POSTGRES_PASSWORD:-mindos_secure_password}@postgres:5432/${POSTGRES_DB:-mindos_db}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks: [mindos-net]
+
   agents:
     build:
       context: ..
@@ -114,11 +130,16 @@ services:
       # F3-T7: a dónde notificar (aprobaciones pendientes, respuesta final) cuando el goal
       # vino de un mensaje con canal de origen.
       COMMS_URL: http://comms:8003
+      # Fase 9: conversaciones, rutinas y uso del asistente se guardan en Postgres.
+      AGENTS_STORE: ${AGENTS_STORE:-postgres}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-mindos_user}:${POSTGRES_PASSWORD:-mindos_secure_password}@postgres:5432/${POSTGRES_DB:-mindos_db}
     depends_on:
       memory:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate-agents:
+        condition: service_completed_successfully
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
