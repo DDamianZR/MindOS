@@ -168,12 +168,13 @@ export function TopNav() {
           </nav>
 
           <div className="flex items-center gap-2">
-            <ButtonLink href="/capture" variant="ghost" className="hidden sm:inline-flex">
-              Capturar
-            </ButtonLink>
-            <ButtonLink href="/assistant" className="hidden sm:inline-flex">
-              Preguntar
-            </ButtonLink>
+            {/* Envueltos: `hidden` en el propio botón choca con su `inline-flex` y no se ocultaba. */}
+            <div className="hidden items-center gap-2 sm:flex">
+              <ButtonLink href="/capture" variant="ghost">
+                Capturar
+              </ButtonLink>
+              <ButtonLink href="/assistant">Preguntar</ButtonLink>
+            </div>
             <details className="relative hidden lg:block">
               <summary className="cursor-pointer list-none rounded-md px-2 py-2 font-mono text-mono text-slate hover:text-obsidian">
                 {username}
