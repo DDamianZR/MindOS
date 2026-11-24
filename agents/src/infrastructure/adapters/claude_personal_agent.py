@@ -27,6 +27,33 @@ FALLBACK_BETA = "server-side-fallback-2026-07-01"
 # produjo el modelo que declinó a mitad de respuesta y el modelo de relevo no puede leerlos.
 _DROPPED_BEFORE_FALLBACK = {"thinking", "redacted_thinking", "tool_use"}
 _MAX_JSON_RETRIES = 2
+# Las ejecuta Claude en sus servidores: no llevan `input_schema` ni se responden con `tool_result`.
+_SERVER_WEB_TOOLS = (
+    {"type": "web_search_20260209", "name": "web_search", "max_uses": 5},
+    {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 5},
+)
+_WEB_TOOL_LABELS = {
+    "web_search": "Buscando en la web",
+    "web_fetch": "Leyendo una página",
+}
+_WEB_RESULT_NAMES = {
+    "web_search_tool_result": "web_search",
+    "web_fetch_tool_result": "web_fetch",
+}
+_WEB_ERROR_SUMMARIES = {
+    "invalid_tool_input": "No se pudo consultar la web con esos datos.",
+    "unavailable": "La web no está disponible en este momento.",
+    "max_uses_exceeded": "Se alcanzó el límite de consultas a la web en este turno.",
+    "too_many_requests": "Hay demasiadas consultas a la web. Prueba de nuevo en un momento.",
+    "query_too_long": "La consulta es demasiado larga.",
+    "request_too_large": "La consulta es demasiado grande.",
+    "url_too_long": "La dirección de la página es demasiado larga.",
+    "url_not_allowed": "Esa página no se puede leer.",
+    "url_not_in_prior_context": "Esa página no salió de la búsqueda.",
+    "url_not_accessible": "No se pudo abrir esa página.",
+    "unsupported_content_type": "El contenido de esa página no se puede leer.",
+    "content_too_large": "La página es demasiado grande para leerla.",
+}
 
 
 def _echoable_content(content: list[Any]) -> list[Any]:
@@ -64,6 +91,152 @@ def _friendly_error(error: Exception) -> str:
     return "Ocurrió un error inesperado al generar la respuesta."
 
 
+def _field(obj: Any, key: str, default: Any = None) -> Any:
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def _web_source(title: Any, url: Any) -> dict[str, Any]:
+    return {
+        "kind": "web",
+        "title": str(title) if title else (str(url) if url else "Página web"),
+        "url": url if isinstance(url, str) else None,
+        "node_id": None,
+        "object_type": None,
+        "score": None,
+    }
+
+
+def _input_ready(name: str, tool_input: dict[str, Any]) -> bool:
+    """La consulta o la URL ya están completas; un objeto vacío es el arranque del bloque."""
+    if name == "web_search":
+        return bool(tool_input.get("query"))
+    if name == "web_fetch":
+        return bool(tool_input.get("url"))
+    return bool(tool_input)
+
+
+def _tool_started(block: Any) -> ToolStarted:
+    name = str(_field(block, "name") or "")
+    tool_input = _field(block, "input")
+    if not isinstance(tool_input, dict):
+        tool_input = {}
+    return ToolStarted(
+        id=str(_field(block, "id") or ""),
+        name=name,
+        label=_WEB_TOOL_LABELS.get(name, name),
+        input=dict(tool_input),
+    )
+
+
+def _started_if_ready(block: Any) -> ToolStarted | None:
+    if _field(block, "type") != "server_tool_use":
+        return None
+    tool_input = _field(block, "input")
+    if not isinstance(tool_input, dict) or not _input_ready(str(_field(block, "name") or ""), tool_input):
+        return None
+    return _tool_started(block)
+
+
+def _web_error_code(content: Any) -> str | None:
+    """Un fallo llega como objeto; un acierto de búsqueda, como lista. No se recorre el objeto."""
+    if content is None or isinstance(content, list):
+        return None
+    type_ = _field(content, "type")
+    if type_ in {"web_search_tool_result_error", "web_fetch_tool_result_error"}:
+        return str(_field(content, "error_code") or "unavailable")
+    if type_ == "web_fetch_result":
+        return None
+    code = _field(content, "error_code")
+    return str(code) if code else None
+
+
+def _web_error_summary(code: str | None) -> str:
+    if code and code in _WEB_ERROR_SUMMARIES:
+        return _WEB_ERROR_SUMMARIES[code]
+    return "No se pudo consultar la web."
+
+
+def _search_sources(content: list[Any]) -> list[dict[str, Any]]:
+    sources = []
+    for item in content:
+        if _field(item, "type") != "web_search_result":
+            continue
+        sources.append(_web_source(_field(item, "title"), _field(item, "url")))
+    return sources
+
+
+def _fetch_source(content: Any) -> dict[str, Any]:
+    url = _field(content, "url")
+    document = _field(content, "document")
+    if document is None:
+        inner = _field(content, "content")
+        if inner is not None and not isinstance(inner, (str, list, bytes)):
+            document = inner
+    title = _field(document, "title") if document is not None else None
+    return _web_source(title, url)
+
+
+def _finished_from_result(block: Any) -> ToolFinished:
+    result_type = _field(block, "type")
+    name = _WEB_RESULT_NAMES.get(result_type, "web_search")
+    tool_id = str(_field(block, "tool_use_id") or _field(block, "id") or "")
+    content = _field(block, "content")
+    code = _web_error_code(content)
+    if code is not None or (name == "web_search" and not isinstance(content, list)):
+        return ToolFinished(id=tool_id, name=name, ok=False, summary=_web_error_summary(code), sources=[])
+    if name == "web_fetch":
+        return ToolFinished(id=tool_id, name=name, ok=True, summary="Página leída", sources=[_fetch_source(content)])
+    sources = _search_sources(content)
+    noun = "resultado" if len(sources) == 1 else "resultados"
+    return ToolFinished(id=tool_id, name=name, ok=True, summary=f"{len(sources)} {noun}", sources=sources)
+
+
+def _server_event_from_stream(event: Any) -> ToolStarted | ToolFinished | None:
+    event_type = getattr(event, "type", None)
+    if event_type == "content_block_start":
+        block = getattr(event, "content_block", None)
+        if _field(block, "type") in _WEB_RESULT_NAMES:
+            return _finished_from_result(block)
+        return _started_if_ready(block)
+    if event_type == "content_block_stop":
+        # El `input` se arma con los `input_json_delta`; al cerrar el bloque ya está completo.
+        return _started_if_ready(getattr(event, "content_block", None))
+    return None
+
+
+def _deferred_server_event(
+    block: Any, started_ids: set[str], finished_ids: set[str],
+) -> ToolStarted | ToolFinished | None:
+    """Lo que el stream no pudo emitir porque el `input` solo estaba en el mensaje final."""
+    block_type = _field(block, "type")
+    if block_type == "server_tool_use":
+        tool_id = str(_field(block, "id") or "")
+        if tool_id in started_ids:
+            return None
+        return _tool_started(block)
+    if block_type in _WEB_RESULT_NAMES:
+        finished = _finished_from_result(block)
+        if finished.id in finished_ids:
+            return None
+        return finished
+    return None
+
+
+def _record_web_tool(
+    event: ToolFinished, finished_ids: set[str], tools_used: list[dict[str, Any]],
+) -> ToolFinished:
+    finished_ids.add(event.id)
+    tools_used.append({
+        "id": event.id, "name": event.name, "ok": event.ok,
+        "summary": event.summary, "sources": event.sources,
+    })
+    return event
+
+
 class ClaudePersonalAgent(PersonalAgentPort):
     """
     Asistente personal sobre la API de Claude (F7-T3): bucle manual de herramientas con
@@ -78,6 +251,8 @@ class ClaudePersonalAgent(PersonalAgentPort):
       proveedor valida que `system`, `tools` y los mensajes previos no hayan cambiado.
     - El caché de prompt cubre herramientas + prompt base (estables entre conversaciones) y,
       con el `cache_control` de nivel superior, el historial de la conversación en curso.
+    - `web_search` y `web_fetch` corren en los servidores de Claude. Se declaran junto a las
+      herramientas propias, pero no se ejecutan aquí ni se responden con `tool_result`.
     """
 
     def __init__(
@@ -90,6 +265,7 @@ class ClaudePersonalAgent(PersonalAgentPort):
         max_tool_rounds: int = 10,
         fallbacks_enabled: bool = True,
         owner_name: str = "",
+        web_tools_enabled: bool = True,
     ):
         self._client = client
         self._toolbox = toolbox
@@ -110,6 +286,8 @@ class ClaudePersonalAgent(PersonalAgentPort):
             }
             for spec in toolbox.specs
         ]
+        if web_tools_enabled:
+            self._tools.extend(dict(tool) for tool in _SERVER_WEB_TOOLS)
 
     @property
     def model_name(self) -> str:
@@ -163,9 +341,21 @@ class ClaudePersonalAgent(PersonalAgentPort):
         try:
             while True:
                 round_text: list[str] = []
+                started_ids: set[str] = set()
+                finished_ids: set[str] = set()
                 try:
                     async with self._client.beta.messages.stream(**self._request_params(conversation)) as stream:
                         async for event in stream:
+                            server_event = _server_event_from_stream(event)
+                            if isinstance(server_event, ToolStarted) and server_event.id not in started_ids:
+                                started_ids.add(server_event.id)
+                                yield server_event
+                            elif (
+                                isinstance(server_event, ToolFinished)
+                                and server_event.id in started_ids
+                                and server_event.id not in finished_ids
+                            ):
+                                yield _record_web_tool(server_event, finished_ids, tools_used)
                             if event.type != "content_block_delta":
                                 continue
                             if event.delta.type == "text_delta":
@@ -209,6 +399,14 @@ class ClaudePersonalAgent(PersonalAgentPort):
 
                 content = _echoable_content(message.content)
                 answer_parts.extend(round_text)
+                # Si el stream no traía el `input` al arrancar el bloque, sale del mensaje final.
+                for block in content:
+                    pending = _deferred_server_event(block, started_ids, finished_ids)
+                    if isinstance(pending, ToolStarted):
+                        started_ids.add(pending.id)
+                        yield pending
+                    elif isinstance(pending, ToolFinished):
+                        yield _record_web_tool(pending, finished_ids, tools_used)
                 tool_uses = [block for block in content if block.type == "tool_use"]
 
                 if message.stop_reason == "pause_turn":

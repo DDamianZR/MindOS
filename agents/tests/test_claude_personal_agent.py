@@ -167,7 +167,9 @@ async def test_request_has_the_shape_claude_sonnet_5_5_requires():
     assert "tool_choice" not in request
     assert "temperature" not in request and "top_p" not in request
     assert request["betas"] == ["server-side-fallback-2026-07-01"] and request["fallbacks"] == "default"
-    assert all(tool["eager_input_streaming"] is True for tool in request["tools"])
+    # Las de servidor no llevan `eager_input_streaming`: solo las propias, que sí tienen esquema.
+    own_tools = [tool for tool in request["tools"] if "input_schema" in tool]
+    assert own_tools and all(tool["eager_input_streaming"] is True for tool in own_tools)
 
     base, context = request["system"]
     assert base["cache_control"] == {"type": "ephemeral"}
@@ -408,3 +410,218 @@ async def test_real_sdk_serializes_the_request_and_parses_the_stream():
     assert tool_results["content"][0]["type"] == "tool_result"
     assert tool_results["content"][0]["tool_use_id"] == "toolu_wire"
     assert second["system"] == first["system"] and second["tools"] == first["tools"]
+
+
+def _web_source(title, url):
+    return {
+        "kind": "web", "title": title, "url": url,
+        "node_id": None, "object_type": None, "score": None,
+    }
+
+
+async def test_request_declares_server_web_tools_exactly_and_without_eager_input_streaming():
+    agent, client = _agent([ANSWER_ROUND])
+    await _run(agent, _conversation(), "Hola")
+
+    server = [tool for tool in client.requests[0]["tools"] if str(tool.get("type", "")).startswith("web_")]
+    assert server == [
+        {"type": "web_search_20260209", "name": "web_search", "max_uses": 5},
+        {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 5},
+    ]
+    assert all("eager_input_streaming" not in tool and "input_schema" not in tool for tool in server)
+    base = client.requests[0]["system"][0]["text"]
+    assert "Investigar fuera de tu memoria" in base
+    assert "2026" not in base
+
+
+async def test_server_web_tools_are_omitted_when_disabled():
+    agent, client = _agent([ANSWER_ROUND], web_tools_enabled=False)
+    await _run(agent, _conversation(), "Hola")
+
+    tools = client.requests[0]["tools"]
+    assert any(tool["name"] == "search_memory" for tool in tools)
+    assert all(tool.get("name") not in {"web_search", "web_fetch"} for tool in tools)
+    assert all(not str(tool.get("type", "")).startswith("web_") for tool in tools)
+
+
+async def test_server_web_search_emits_web_sources_and_is_not_executed():
+    found = [
+        _block(
+            "web_search_result", url="https://www.postgresql.org/docs/",
+            title="PostgreSQL Documentation", page_age="3 days ago",
+        ),
+        _block(
+            "web_search_result", url="https://www.postgresql.org/about/",
+            title="PostgreSQL: About", page_age=None,
+        ),
+    ]
+    web_round = (
+        [_delta("text_delta", text="Voy a mirarlo. ")],
+        _message([
+            _block("text", text="Voy a mirarlo. "),
+            _block("server_tool_use", id="srvtoolu_1", name="web_search", input={"query": "documentación de Postgres"}),
+            _block("web_search_tool_result", tool_use_id="srvtoolu_1", content=found),
+            _block("text", text="Sigue vigente."),
+        ]),
+    )
+    agent, client = _agent([web_round])
+    conversation = _conversation()
+
+    events = await _run(agent, conversation, "¿Sigue vigente la documentación de Postgres?")
+
+    assert [e.type for e in events] == ["text", "tool_start", "tool_end", "done"]
+    start, end = events[1], events[2]
+    assert (start.name, start.label, start.input) == (
+        "web_search", "Buscando en la web", {"query": "documentación de Postgres"},
+    )
+    assert end.ok is True and end.summary == "2 resultados"
+    assert end.sources == [
+        _web_source("PostgreSQL Documentation", "https://www.postgresql.org/docs/"),
+        _web_source("PostgreSQL: About", "https://www.postgresql.org/about/"),
+    ]
+    # El servidor ya resolvió la búsqueda: no hay segunda petición ni `tool_result`.
+    assert len(client.requests) == 1
+    assert [m["role"] for m in conversation.messages] == ["user", "assistant"]
+    assert [b.type for b in conversation.messages[1]["content"]] == [
+        "text", "server_tool_use", "web_search_tool_result", "text",
+    ]
+    assert conversation.transcript[-1]["tools"] == [{
+        "id": "srvtoolu_1", "name": "web_search", "ok": True,
+        "summary": "2 resultados", "sources": end.sources,
+    }]
+
+
+async def test_server_web_fetch_reports_the_page_it_read():
+    page = _block(
+        "web_fetch_result",
+        url="https://www.postgresql.org/docs/",
+        content=_block("document", title="PostgreSQL Documentation"),
+    )
+    web_round = (
+        [],
+        _message([
+            _block(
+                "server_tool_use", id="srvtoolu_f", name="web_fetch",
+                input={"url": "https://www.postgresql.org/docs/"},
+            ),
+            _block("web_fetch_tool_result", tool_use_id="srvtoolu_f", content=page),
+        ]),
+    )
+    agent, client = _agent([web_round])
+    conversation = _conversation()
+
+    events = await _run(agent, conversation, "Lee la documentación")
+
+    assert [e.type for e in events] == ["tool_start", "tool_end", "done"]
+    assert events[0].label == "Leyendo una página"
+    assert events[0].input == {"url": "https://www.postgresql.org/docs/"}
+    assert events[1].ok is True and events[1].summary == "Página leída"
+    assert events[1].sources == [
+        _web_source("PostgreSQL Documentation", "https://www.postgresql.org/docs/"),
+    ]
+    assert len(client.requests) == 1
+    assert [m["role"] for m in conversation.messages] == ["user", "assistant"]
+
+
+async def test_server_web_search_error_object_finishes_the_tool_without_breaking_the_turn():
+    web_round = (
+        [_delta("text_delta", text="No pude mirarlo. ")],
+        _message([
+            _block("server_tool_use", id="srvtoolu_err", name="web_search", input={"query": "precios"}),
+            _block(
+                "web_search_tool_result",
+                tool_use_id="srvtoolu_err",
+                content={"type": "web_search_tool_result_error", "error_code": "unavailable"},
+            ),
+            _block("text", text="La web no respondió."),
+        ]),
+    )
+    agent, client = _agent([web_round])
+    conversation = _conversation()
+
+    events = await _run(agent, conversation, "¿Cuánto cuesta?")
+
+    tool_end = next(event for event in events if event.type == "tool_end")
+    assert tool_end.ok is False and tool_end.sources == []
+    assert tool_end.summary == "La web no está disponible en este momento."
+    assert events[-1].type == "done"
+    assert len(client.requests) == 1
+    assert [m["role"] for m in conversation.messages] == ["user", "assistant"]
+    assert conversation.transcript[-1]["tools"][0]["ok"] is False
+
+
+WIRE_WEB_SEARCH_ROUND = _sse([
+    _wire_message_start(),
+    {"type": "content_block_start", "index": 0, "content_block": {
+        "type": "server_tool_use", "id": "srvtoolu_wire", "name": "web_search", "input": {},
+    }},
+    {"type": "content_block_delta", "index": 0, "delta": {
+        "type": "input_json_delta", "partial_json": '{"query": "documentación ',
+    }},
+    {"type": "content_block_delta", "index": 0, "delta": {
+        "type": "input_json_delta", "partial_json": 'de Postgres"}',
+    }},
+    {"type": "content_block_stop", "index": 0},
+    {"type": "content_block_start", "index": 1, "content_block": {
+        "type": "web_search_tool_result",
+        "tool_use_id": "srvtoolu_wire",
+        "content": [{
+            "type": "web_search_result",
+            "url": "https://www.postgresql.org/docs/",
+            "title": "PostgreSQL Documentation",
+            "page_age": "3 days ago",
+            "encrypted_content": "enc",
+        }],
+    }},
+    {"type": "content_block_stop", "index": 1},
+    {"type": "content_block_start", "index": 2, "content_block": {"type": "text", "text": ""}},
+    {"type": "content_block_delta", "index": 2, "delta": {
+        "type": "text_delta", "text": "Postgres documenta el tipo jsonb.",
+    }},
+    {"type": "content_block_stop", "index": 2},
+    *_wire_stop("end_turn", 12),
+])
+
+
+async def test_real_sdk_parses_a_server_web_search_stream():
+    bodies = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        bodies.append(json.loads(request.content))
+        return httpx2.Response(
+            200, headers={"content-type": "text/event-stream"}, content=WIRE_WEB_SEARCH_ROUND,
+        )
+
+    client = anthropic.AsyncAnthropic(
+        api_key="sk-ant-test", max_retries=0,
+        http_client=anthropic.DefaultAsyncHttpxClient(transport=httpx2.MockTransport(handler)),
+    )
+    agent = ClaudePersonalAgent(client, AssistantToolbox(FakeMemoryGateway()))
+    conversation = _conversation()
+
+    events = await _run(agent, conversation, "¿Qué dice la documentación de Postgres?")
+
+    assert [e.type for e in events] == ["tool_start", "tool_end", "text", "done"]
+    assert events[0].label == "Buscando en la web"
+    assert events[0].input == {"query": "documentación de Postgres"}
+    assert events[1].ok is True and events[1].summary == "1 resultado"
+    assert events[1].sources == [
+        _web_source("PostgreSQL Documentation", "https://www.postgresql.org/docs/"),
+    ]
+    assert events[2].text == "Postgres documenta el tipo jsonb."
+    assert events[-1].usage["output_tokens"] == 12
+
+    request = bodies[0]
+    server = [tool for tool in request["tools"] if str(tool.get("type", "")).startswith("web_")]
+    assert server == [
+        {"type": "web_search_20260209", "name": "web_search", "max_uses": 5},
+        {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 5},
+    ]
+    assert all("eager_input_streaming" not in tool for tool in server)
+    assert len(bodies) == 1, "la búsqueda web no pide otra vuelta ni un tool_result"
+    assert [m["role"] for m in conversation.messages] == ["user", "assistant"]
+    assistant = conversation.messages[1]["content"]
+    assert [block.type for block in assistant] == ["server_tool_use", "web_search_tool_result", "text"]
+    assert assistant[0].input == {"query": "documentación de Postgres"}
+    assert conversation.transcript[-1]["text"] == "Postgres documenta el tipo jsonb."
+    assert conversation.transcript[-1]["tools"][0]["ok"] is True
