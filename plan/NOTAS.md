@@ -215,3 +215,46 @@ Es la tarea F7-T7 y es lo primero que hay que hacer con una key.
 - El fallback del lado del servidor ante un rechazo del clasificador de seguridad
   (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`) está activo por defecto. Se
   apaga con `ANTHROPIC_FALLBACKS=false`.
+
+---
+
+## Fase 8 — Agente y consola (F8-T0..T8, T11) — 2026-11-24
+
+Detalle en [`09-agente-y-consola.md`](09-agente-y-consola.md).
+
+**Cómo se ejecutó:** orquestación + ejecución delegada. El orquestador limpió el repo, fijó la
+base de diseño, los contratos (`schemas/.../stats_dto.py`, `routine_dto.py`, `assistant_dto.py`)
+y el tipo del catálogo de diagramas, y repartió el resto en 14 tareas paralelas a la CLI de
+Cursor (Grok 4.7 High, el único modelo útil del plan de la cuenta además de `auto`), cada una
+con archivos disjuntos. Cada entrega se revisó (diff), se re-verificó y se integró en su propio
+commit. Cuatro defectos los encontró la revisión, no los delegados:
+
+1. **Diagramas que no se dibujaban (25 de 64).** El visor reparseaba el SVG de Mermaid como XML
+   estricto; los flowcharts llevan `<br>` sin cerrar en `<foreignObject>`. El validador de Node
+   (que solo parsea) no podía verlo; lo encontró `/diagrams?verificar=1` en el navegador.
+2. **Desbordamiento de 15 px en móvil** en todas las vistas: `hidden` en `ButtonLink` chocaba
+   con su `inline-flex`.
+3. **Doble anillo de foco** en el campo del Asistente.
+4. **Seguridad (F8-T11):** la API key de servicio podía resolver aprobaciones humanas. Lo reveló
+   el diagrama 7.7 (roles y permisos). El smoke de la Fase 3 resolvía así; se actualizó para
+   resolver con JWT humano y comprobar el 403 con API key.
+
+**Verificado:** `pytest -m "not integration"` 272 verdes; `ruff`, `tsc`, `eslint` y `next build`
+limpios; `node dashboard/scripts/check-diagrams.mjs` sin problemas (78 entradas); los 64
+diagramas generados se dibujan en el navegador; las vistas nuevas y rediseñadas, revisadas en
+navegador a escritorio y a 375 px sin scroll horizontal; los tres endpoints nuevos responden a
+través del Gateway contra el stack local.
+
+**No verificado:** ninguna llamada real a la API de Claude (sin `ANTHROPIC_API_KEY`): la búsqueda
+web y las rutinas solo se probaron con dobles de prueba y con un stream SSE simulado del SDK. Las
+consultas SQL de estadísticas compilan para Postgres pero no se ejecutaron contra uno real.
+
+**Hallazgos de los diagramas (sin corregir):** solo Memory consume del bus de eventos;
+`mindos.comms.outbound` y `mindos.memory` se publican y nadie los lee (F8-T14).
+
+**Limpieza del repo (F8-T0):** se rescataron a esta rama `docs/uml/` (estaba sin commit en un
+worktree) y `docs/modelo-dominio/` (otra rama); se retiraron 7 worktrees y 8 ramas locales ya
+fusionadas, 5 carpetas vacías del checkout principal y `playground/`; `MINDOS_ROADMAP.md` pasó a
+`plan/diagnostico-inicial.md`. La rama remota `docs/c4-context` sigue en GitHub (no se tocó el
+remoto).
+
