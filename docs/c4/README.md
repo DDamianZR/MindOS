@@ -23,7 +23,7 @@ claro/oscuro, export a PNG/Mermaid/PlantUML/D2) que se publica en **GitHub Pages
   Redis/Event Bus, PostgreSQL+pgvector, MinIO).
 
 > Fuente de arquitectura (autoritativa): [`plan/README.md`](../../plan/README.md) §3 y §1,
-> [`MINDOS_ROADMAP.md`](../../MINDOS_ROADMAP.md) y los servicios reales del monorepo.
+> [`plan/diagnostico-inicial.md`](../../plan/diagnostico-inicial.md) y los servicios reales del monorepo.
 > Al cambiar la arquitectura, actualiza estos `.c4` en el mismo PR.
 
 ## Ver en local

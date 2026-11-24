@@ -245,6 +245,7 @@ def _collect_sources(data: Any, limit: int = 12) -> list[dict[str, Any]]:
             node_id, title = obj.get("node_id"), obj.get("title")
             if node_id and title and str(node_id) not in found:
                 found[str(node_id)] = {
+                    "kind": "memory",
                     "node_id": str(node_id),
                     "title": str(title),
                     "object_type": obj.get("object_type"),
@@ -355,7 +356,7 @@ class AssistantToolbox:
         return ToolOutcome(
             content=_dump(result), summary=summary,
             sources=[{
-                "node_id": str(saved.get("node_id")), "title": args.title,
+                "kind": "memory", "node_id": str(saved.get("node_id")), "title": args.title,
                 "object_type": args.object_type.value, "score": None,
             }],
         )

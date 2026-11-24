@@ -22,6 +22,19 @@ class AssistantStatusResponse(BaseModel):
     tools: list[str] = Field(default_factory=list, description="Herramientas disponibles para el asistente")
 
 
+class AssistantSourceDto(BaseModel):
+    """
+    Una fuente que respalda una respuesta. `kind="memory"` lleva `node_id` (un nodo de la
+    memoria); `kind="web"` lleva `url` (una página leída con las herramientas web de Claude).
+    """
+    kind: Literal["memory", "web"] = "memory"
+    title: str
+    node_id: str | None = None
+    url: str | None = None
+    object_type: str | None = None
+    score: float | None = None
+
+
 class AssistantToolUseDto(BaseModel):
     """Una herramienta usada durante un turno, con las fuentes que consultó."""
     id: str
@@ -43,3 +56,44 @@ class AssistantConversationResponse(BaseModel):
     conversation_id: str
     started_at: str
     messages: list[AssistantTranscriptMessage]
+
+
+class AssistantCountItem(BaseModel):
+    key: str
+    count: int
+
+
+class AssistantUsageTotals(BaseModel):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+
+
+class AssistantDayCount(BaseModel):
+    date: str = Field(..., description="YYYY-MM-DD (UTC)")
+    turns: int
+
+
+class AssistantStatsResponse(BaseModel):
+    """
+    `GET /api/v1/agents/assistant/stats` (Fase 8): uso del asistente desde que arrancó el
+    servicio de agentes (en memoria del proceso; se reinicia con él).
+    """
+    provider: Literal["anthropic", "demo"]
+    model: str
+    since: str = Field(..., description="ISO 8601 del arranque del registro")
+    conversations: int
+    turns: int
+    failed_turns: int
+    tool_calls: list[AssistantCountItem] = Field(default_factory=list, description="Por herramienta, de mayor a menor")
+    usage: AssistantUsageTotals
+    cache_hit_ratio: float | None = Field(
+        default=None,
+        description="cache_read / (input + cache_read + cache_creation); nulo si no hubo tokens",
+    )
+    estimated_cost_usd: float = Field(..., description="Según ASSISTANT_PRICING de config; 0 en demo")
+    avg_turn_seconds: float | None = None
+    turns_by_day: list[AssistantDayCount] = Field(
+        default_factory=list, description="Últimos 14 días incluido hoy, uno por día aunque sea cero, ascendente"
+    )

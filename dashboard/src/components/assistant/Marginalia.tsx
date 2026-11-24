@@ -38,7 +38,8 @@ export function uniqueSources(tools: ToolRun[]): AssistantSource[] {
   const seen = new Map<string, AssistantSource>();
   for (const tool of tools) {
     for (const source of tool.sources) {
-      if (!seen.has(source.node_id)) seen.set(source.node_id, source);
+      const key = source.node_id ?? source.url ?? source.title;
+      if (!seen.has(key)) seen.set(key, source);
     }
   }
   return [...seen.values()];
@@ -87,7 +88,7 @@ export function Marginalia({ tools, thinking }: { tools: ToolRun[]; thinking: st
       {sources.length > 0 && (
         <ul className="space-y-2.5">
           {sources.map((source) => (
-            <SourceNote key={source.node_id} source={source} />
+            <SourceNote key={source.node_id ?? source.url ?? source.title} source={source} />
           ))}
         </ul>
       )}
