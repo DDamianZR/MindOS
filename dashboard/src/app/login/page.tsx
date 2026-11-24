@@ -7,7 +7,7 @@ import { BrandMark } from "@/components/icons";
 import { ApiError } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth";
 
-const HOME = "/assistant";
+const HOME = "/inicio";
 
 function LoginForm() {
   const { login, isAuthenticated } = useAuth();

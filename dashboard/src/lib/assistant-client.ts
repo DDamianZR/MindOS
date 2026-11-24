@@ -3,11 +3,14 @@
 // `EventSource` (no admite POST ni cabeceras): se lee el cuerpo con `fetch` y se parte a mano.
 import { ApiError, GATEWAY_URL, getAuthToken } from "./api-client";
 
+/** Fuente de una respuesta: un nodo de la memoria (`node_id`) o una página web (`url`). */
 export interface AssistantSource {
-  node_id: string;
+  kind?: "memory" | "web";
   title: string;
-  object_type: string | null;
-  score: number | null;
+  node_id?: string | null;
+  url?: string | null;
+  object_type?: string | null;
+  score?: number | null;
 }
 
 export interface AssistantStatus {
