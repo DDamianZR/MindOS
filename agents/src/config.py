@@ -42,6 +42,19 @@ class Settings(BaseSettings):
     ASSISTANT_MAX_TOOL_ROUNDS: int = 10
     # Nombre de la persona dueña de esta instancia (mono-usuario). Opcional.
     MINDOS_OWNER_NAME: str = ""
+    # Búsqueda y lectura web con las herramientas de servidor de Claude (Fase 8).
+    ASSISTANT_WEB_TOOLS: bool = True
+    # Precios en USD por millón de tokens, para el costo estimado de /assistant/stats (Fase 8).
+    # Un modelo que no esté aquí cuenta como 0.
+    ASSISTANT_PRICING: dict[str, dict[str, float]] = {
+        "claude-sonnet-5-5": {"input": 2.00, "output": 10.00, "cache_read": 0.10, "cache_write": 2.50},
+    }
+
+    # --- Rutinas programadas (Fase 8) ---
+    ROUTINES_ENABLED: bool = True
+    # Zona horaria IANA en que se interpretan las expresiones cron. Vacío = la del servidor.
+    ROUTINES_TIMEZONE: str = ""
+    ROUTINES_TICK_SECONDS: int = 30
 
     class Config:
         env_file = ".env"
