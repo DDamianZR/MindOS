@@ -46,7 +46,7 @@ export function getAuthToken(): string | null {
   return authToken;
 }
 
-async function request<T>(
+export async function request<T>(
   path: string,
   options: { method?: string; params?: Record<string, string | number | boolean | undefined>; body?: unknown } = {},
 ): Promise<T> {
