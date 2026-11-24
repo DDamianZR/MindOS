@@ -1,0 +1,154 @@
+@startuml packages_memory
+!include ../../src/_tema.iuml
+title memory — paquetes (generado con pyreverse)
+left to right direction
+set namespaceSeparator none
+package "memory.src.api.cognitive_router" as memory.src.api.cognitive_router {
+}
+package "memory.src.api.thinking_router" as memory.src.api.thinking_router {
+}
+package "memory.src.application.ports" as memory.src.application.ports {
+}
+package "memory.src.application.ports.database" as memory.src.application.ports.database {
+}
+package "memory.src.application.ports.embedding" as memory.src.application.ports.embedding {
+}
+package "memory.src.application.ports.llm" as memory.src.application.ports.llm {
+}
+package "memory.src.application.ports.ocr" as memory.src.application.ports.ocr {
+}
+package "memory.src.application.ports.storage" as memory.src.application.ports.storage {
+}
+package "memory.src.application.ports.stt" as memory.src.application.ports.stt {
+}
+package "memory.src.application.ports.thinking_graph" as memory.src.application.ports.thinking_graph {
+}
+package "memory.src.application.ports.vector_store" as memory.src.application.ports.vector_store {
+}
+package "memory.src.application.services" as memory.src.application.services {
+}
+package "memory.src.application.services.cognitive_queries" as memory.src.application.services.cognitive_queries {
+}
+package "memory.src.application.services.context_builder" as memory.src.application.services.context_builder {
+}
+package "memory.src.application.services.contradiction_detector" as memory.src.application.services.contradiction_detector {
+}
+package "memory.src.application.services.dto_mappers" as memory.src.application.services.dto_mappers {
+}
+package "memory.src.application.services.explainability" as memory.src.application.services.explainability {
+}
+package "memory.src.application.services.ingestion_pipeline" as memory.src.application.services.ingestion_pipeline {
+}
+package "memory.src.config" as memory.src.config {
+}
+package "memory.src.infrastructure.adapters" as memory.src.infrastructure.adapters {
+}
+package "memory.src.infrastructure.adapters.faster_whisper_stt" as memory.src.infrastructure.adapters.faster_whisper_stt {
+}
+package "memory.src.infrastructure.adapters.in_memory_database" as memory.src.infrastructure.adapters.in_memory_database {
+}
+package "memory.src.infrastructure.adapters.in_memory_storage" as memory.src.infrastructure.adapters.in_memory_storage {
+}
+package "memory.src.infrastructure.adapters.in_memory_thinking_graph" as memory.src.infrastructure.adapters.in_memory_thinking_graph {
+}
+package "memory.src.infrastructure.adapters.in_memory_vector_store" as memory.src.infrastructure.adapters.in_memory_vector_store {
+}
+package "memory.src.infrastructure.adapters.local_fs_storage" as memory.src.infrastructure.adapters.local_fs_storage {
+}
+package "memory.src.infrastructure.adapters.minio_storage" as memory.src.infrastructure.adapters.minio_storage {
+}
+package "memory.src.infrastructure.adapters.mock_embedding" as memory.src.infrastructure.adapters.mock_embedding {
+}
+package "memory.src.infrastructure.adapters.mock_llm" as memory.src.infrastructure.adapters.mock_llm {
+}
+package "memory.src.infrastructure.adapters.mock_ocr" as memory.src.infrastructure.adapters.mock_ocr {
+}
+package "memory.src.infrastructure.adapters.mock_stt" as memory.src.infrastructure.adapters.mock_stt {
+}
+package "memory.src.infrastructure.adapters.ollama_embedding" as memory.src.infrastructure.adapters.ollama_embedding {
+}
+package "memory.src.infrastructure.adapters.ollama_llm" as memory.src.infrastructure.adapters.ollama_llm {
+}
+package "memory.src.infrastructure.adapters.tesseract_ocr" as memory.src.infrastructure.adapters.tesseract_ocr {
+}
+package "memory.src.infrastructure.database.models" as memory.src.infrastructure.database.models {
+}
+package "memory.src.infrastructure.database.repositories" as memory.src.infrastructure.database.repositories {
+}
+package "memory.src.infrastructure.database.thinking_graph_repository" as memory.src.infrastructure.database.thinking_graph_repository {
+}
+package "memory.src.infrastructure.vector" as memory.src.infrastructure.vector {
+}
+package "memory.src.infrastructure.vector.pgvector" as memory.src.infrastructure.vector.pgvector {
+}
+package "memory.src.main" as memory.src.main {
+}
+memory.src.api.cognitive_router --> memory.src.application.services.cognitive_queries
+memory.src.api.cognitive_router --> memory.src.main
+memory.src.api.thinking_router --> memory.src.application.services.dto_mappers
+memory.src.api.thinking_router --> memory.src.application.services.explainability
+memory.src.api.thinking_router --> memory.src.config
+memory.src.api.thinking_router --> memory.src.main
+memory.src.application.services.cognitive_queries --> memory.src.application.ports.database
+memory.src.application.services.cognitive_queries --> memory.src.application.ports.embedding
+memory.src.application.services.cognitive_queries --> memory.src.application.ports.vector_store
+memory.src.application.services.cognitive_queries --> memory.src.application.services.explainability
+memory.src.application.services.context_builder --> memory.src.application.ports.database
+memory.src.application.services.context_builder --> memory.src.application.ports.embedding
+memory.src.application.services.context_builder --> memory.src.application.ports.vector_store
+memory.src.application.services.contradiction_detector --> memory.src.application.ports.database
+memory.src.application.services.contradiction_detector --> memory.src.application.ports.embedding
+memory.src.application.services.contradiction_detector --> memory.src.application.ports.llm
+memory.src.application.services.contradiction_detector --> memory.src.application.ports.vector_store
+memory.src.application.services.explainability --> memory.src.application.ports.database
+memory.src.application.services.explainability --> memory.src.application.ports.thinking_graph
+memory.src.application.services.explainability --> memory.src.application.services.dto_mappers
+memory.src.application.services.ingestion_pipeline --> memory.src.application.ports.llm
+memory.src.application.services.ingestion_pipeline --> memory.src.application.ports.ocr
+memory.src.application.services.ingestion_pipeline --> memory.src.application.ports.storage
+memory.src.application.services.ingestion_pipeline --> memory.src.application.ports.stt
+memory.src.infrastructure.adapters.faster_whisper_stt --> memory.src.application.ports.stt
+memory.src.infrastructure.adapters.in_memory_database --> memory.src.application.ports.database
+memory.src.infrastructure.adapters.in_memory_storage --> memory.src.application.ports.storage
+memory.src.infrastructure.adapters.in_memory_thinking_graph --> memory.src.application.ports.thinking_graph
+memory.src.infrastructure.adapters.in_memory_vector_store --> memory.src.application.ports.vector_store
+memory.src.infrastructure.adapters.local_fs_storage --> memory.src.application.ports.storage
+memory.src.infrastructure.adapters.minio_storage --> memory.src.application.ports.storage
+memory.src.infrastructure.adapters.mock_embedding --> memory.src.application.ports.embedding
+memory.src.infrastructure.adapters.mock_llm --> memory.src.application.ports.llm
+memory.src.infrastructure.adapters.mock_ocr --> memory.src.application.ports.ocr
+memory.src.infrastructure.adapters.mock_stt --> memory.src.application.ports.stt
+memory.src.infrastructure.adapters.ollama_embedding --> memory.src.application.ports.embedding
+memory.src.infrastructure.adapters.ollama_llm --> memory.src.application.ports.llm
+memory.src.infrastructure.adapters.tesseract_ocr --> memory.src.application.ports.ocr
+memory.src.infrastructure.database.models --> memory.src.config
+memory.src.infrastructure.database.repositories --> memory.src.application.ports.database
+memory.src.infrastructure.database.repositories --> memory.src.infrastructure.database.models
+memory.src.infrastructure.database.thinking_graph_repository --> memory.src.application.ports.thinking_graph
+memory.src.infrastructure.database.thinking_graph_repository --> memory.src.infrastructure.database.models
+memory.src.infrastructure.vector.pgvector --> memory.src.application.ports.vector_store
+memory.src.infrastructure.vector.pgvector --> memory.src.infrastructure.database.models
+memory.src.main --> memory.src.api.cognitive_router
+memory.src.main --> memory.src.api.thinking_router
+memory.src.main --> memory.src.application.services.context_builder
+memory.src.main --> memory.src.application.services.contradiction_detector
+memory.src.main --> memory.src.application.services.ingestion_pipeline
+memory.src.main --> memory.src.config
+memory.src.main --> memory.src.infrastructure.adapters.faster_whisper_stt
+memory.src.main --> memory.src.infrastructure.adapters.in_memory_database
+memory.src.main --> memory.src.infrastructure.adapters.in_memory_storage
+memory.src.main --> memory.src.infrastructure.adapters.in_memory_thinking_graph
+memory.src.main --> memory.src.infrastructure.adapters.in_memory_vector_store
+memory.src.main --> memory.src.infrastructure.adapters.local_fs_storage
+memory.src.main --> memory.src.infrastructure.adapters.minio_storage
+memory.src.main --> memory.src.infrastructure.adapters.mock_embedding
+memory.src.main --> memory.src.infrastructure.adapters.mock_llm
+memory.src.main --> memory.src.infrastructure.adapters.mock_ocr
+memory.src.main --> memory.src.infrastructure.adapters.mock_stt
+memory.src.main --> memory.src.infrastructure.adapters.ollama_embedding
+memory.src.main --> memory.src.infrastructure.adapters.ollama_llm
+memory.src.main --> memory.src.infrastructure.adapters.tesseract_ocr
+memory.src.main --> memory.src.infrastructure.database.repositories
+memory.src.main --> memory.src.infrastructure.database.thinking_graph_repository
+memory.src.main --> memory.src.infrastructure.vector.pgvector
+@enduml

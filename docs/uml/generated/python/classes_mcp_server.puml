@@ -1,0 +1,31 @@
+@startuml classes_mcp_server
+!include ../../src/_tema.iuml
+title mcp_server — clases (generado con pyreverse)
+set namespaceSeparator none
+class "ApiKeyAuthMiddleware" as mcp_server.mindos_mcp.auth_middleware.ApiKeyAuthMiddleware {
+  api_key : str
+  app
+}
+class "Config" as mcp_server.mindos_mcp.config.Settings.Config {
+  env_file : str
+  env_file_encoding : str
+}
+class "MindOSClient" as mcp_server.mindos_mcp.mindos_client.MindOSClient {
+  api_key : str
+  base_url
+  ask_cognitive(question_type: str, params: dict[str, Any]) -> dict[str, Any]
+  close() -> None
+  context(query: str, limit: int, depth: int) -> dict[str, Any]
+  explain(node_id: str, max_depth: int) -> dict[str, Any]
+  ingest(title: str, content: str, object_type: str, source: str | None, author: str) -> dict[str, Any]
+  search(query: str, limit: int) -> dict[str, Any]
+}
+class "Settings" as mcp_server.mindos_mcp.config.Settings {
+  GATEWAY_URL : str
+  MCP_API_KEY : str
+  MCP_HTTP_PORT : int
+  MINDOS_API_KEY : str
+  MINDOS_ENV : str
+  SERVICE_NAME : str
+}
+@enduml

@@ -1,0 +1,90 @@
+@startuml
+!include ../_tema.iuml
+title MindOS — Diagrama de despliegue (infra/docker-compose.yml)
+
+skinparam nodesep 40
+skinparam ranksep 50
+
+node "Navegador / móvil" as browser <<dispositivo>> {
+  artifact "Dashboard + PWA\n(Next.js · service worker ·\ncola offline IndexedDB)" as pwa
+}
+
+node "Equipo con asistente de IA" as assistant_host <<dispositivo>> {
+  artifact "Claude Desktop / Code" as assistant
+  artifact "mindos_mcp (stdio)" as mcp_stdio
+}
+
+cloud "WhatsApp" as whatsapp
+
+node "Servidor Ubuntu 24/7\n(i7-1065G7 · 16 GB · sin GPU)" as server <<dispositivo>> {
+
+  node "Docker Engine · proyecto «mindos»" as docker <<entorno de ejecución>> {
+
+    node "traefik\n:80 / :443 (únicos puertos al host)" as traefik <<contenedor>>
+
+    frame "red bridge mindos-net" {
+      node "gateway :8000\nmem 256m" as gateway <<contenedor>>
+      node "mcp :8005\nmem 256m" as mcp <<contenedor>>
+      node "agents :8002\nmem 768m" as agents <<contenedor>>
+      node "memory :8001\nmem 768m" as memory <<contenedor>>
+      node "migrate\n(one-shot: alembic upgrade head)" as migrate <<contenedor>>
+      node "comms :8003\nmem 256m" as comms <<contenedor>>
+      node "whatsapp :8004\nmem 384m" as wa <<contenedor>>
+      node "redis 7-alpine\nmem 512m · AOF" as redis <<contenedor>>
+      node "postgres pgvector:pg16\nmem 2g" as postgres <<contenedor>>
+    }
+
+    database "postgres_data" as v_pg <<volumen>>
+    database "redis_data" as v_redis <<volumen>>
+    database "storage_data\n/data/storage" as v_storage <<volumen>>
+    database "whatsapp_auth" as v_wa <<volumen>>
+    database "traefik_certs" as v_certs <<volumen>>
+  }
+
+  node "Ollama :11434\n(host.docker.internal)\nqwen3:8b · nomic-embed-text" as ollama_local <<proceso del host>>
+}
+
+node "Workstation (LAN, bajo demanda)\nRyzen 9 8940HX" as workstation <<dispositivo>> {
+  node "Ollama :11434\nqwen2.5-coder:14b · qwen3-coder:30b" as ollama_ws <<proceso>>
+}
+
+' ── Comunicación ──
+pwa --> traefik : HTTPS
+assistant --> mcp_stdio : stdio
+mcp_stdio --> traefik : HTTPS · X-Api-Key
+traefik --> gateway : HTTP (TLS terminado)
+gateway --> memory
+gateway --> agents
+gateway --> comms
+gateway --> mcp
+mcp --> gateway
+memory --> agents
+agents --> memory
+agents --> comms
+comms --> wa
+wa --> comms
+wa <--> whatsapp : Baileys (saliente)
+comms --> redis
+memory --> redis
+gateway --> redis
+memory --> postgres
+migrate --> postgres
+
+memory --> ollama_local : HTTP
+agents --> ollama_local : HTTP
+agents ..> ollama_ws : HTTP por LAN · previsto\n(OLLAMA_URL_WORKSTATION,\naún no cableado)
+
+' ── Volúmenes ──
+postgres -- v_pg
+redis -- v_redis
+memory -- v_storage
+wa -- v_wa
+traefik -- v_certs
+
+note right of migrate
+  ""depends_on"": postgres (healthy)
+  memory arranca solo tras
+  ""service_completed_successfully""
+end note
+
+@enduml

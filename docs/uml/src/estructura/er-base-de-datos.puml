@@ -1,0 +1,122 @@
+@startuml
+!include ../_tema.iuml
+title MindOS — Esquema de PostgreSQL (Alembic 0001 → 0004)
+
+' Notación IE (pata de gallo). PK = clave primaria, FK = foránea, * = NOT NULL.
+hide circle
+skinparam linetype ortho
+skinparam nodesep 70
+skinparam ranksep 60
+
+entity "knowledge_nodes" as nodes {
+  * id : uuid <<PK>>
+  --
+  * object_type : varchar(50)
+  * created_at : timestamptz
+}
+
+entity "knowledge_node_versions" as versions {
+  * id : uuid <<PK>>
+  --
+  * node_id : uuid <<FK>> (on delete cascade)
+  * version : int
+  * title : varchar(255)
+  * content : text
+  embedding : vector(768)
+  * metadata : jsonb
+  * created_at : timestamptz
+  * author : varchar(100)
+  parent_version_id : uuid <<FK>>
+  * confidence : float
+  * importance : float
+  * status : varchar(20)
+  * evidence : jsonb
+  * salience : float
+  tombstoned_at : timestamptz
+  source_id : uuid <<FK>>
+  ..
+  UNIQUE (node_id, version)
+  HNSW (embedding vector_cosine_ops)
+  INDEX (created_at)
+  INDEX (node_id) WHERE tombstoned_at IS NULL
+}
+
+entity "sources" as sources {
+  * id : uuid <<PK>>
+  --
+  * kind : varchar(30)
+  uri : text
+  raw_ref : text
+  * captured_at : timestamptz
+  * metadata : jsonb
+  ..
+  INDEX (kind, uri)
+}
+
+entity "relations" as relations {
+  * source_id : uuid <<PK, FK>>
+  * target_id : uuid <<PK, FK>>
+  * relation_type : varchar(50) <<PK>>
+  * valid_from : timestamptz <<PK>>
+  --
+  valid_to : timestamptz
+  * metadata : jsonb
+  ..
+  INDEX (source_id) WHERE valid_to IS NULL
+}
+
+entity "knowledge_event_log" as event_log {
+  * event_id : uuid <<PK>>
+  --
+  * event_type : varchar(100)
+  * payload : jsonb
+  * logged_at : timestamptz
+}
+
+entity "reasoning_episodes" as episodes {
+  * id : uuid <<PK>>
+  --
+  * goal : text
+  * correlation_id : uuid
+  * agent : varchar(100)
+  * status : varchar(20)
+  * started_at : timestamptz
+  ended_at : timestamptz
+  final_output : text
+  ..
+  INDEX (correlation_id)
+}
+
+entity "reasoning_steps" as steps {
+  * id : uuid <<PK>>
+  --
+  * episode_id : uuid <<FK>> (on delete cascade)
+  * step_index : int
+  * kind : varchar(20)
+  input : text
+  output : text
+  capability_name : varchar(100)
+  approved : boolean
+  feedback : text
+  * created_at : timestamptz
+  * knowledge_refs : jsonb
+  ..
+  INDEX (episode_id)
+  GIN (knowledge_refs jsonb_path_ops)
+}
+
+nodes ||--|{ versions : "versiones"
+versions |o--o{ versions : "parent_version_id"
+sources |o--o{ versions : "procedencia"
+nodes ||--o{ relations : "source_id"
+nodes ||--o{ relations : "target_id"
+episodes ||--o{ steps : "pasos"
+steps }o..o{ nodes : "knowledge_refs (JSONB,\nsin FK física)"
+
+note bottom of event_log
+  Registro durable escrito en la misma
+  transacción que el conocimiento; el
+  Event Bus (Redis) es best-effort.
+end note
+
+@enduml

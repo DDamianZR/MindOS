@@ -1,0 +1,376 @@
+@startuml classes_memory
+!include ../../src/_tema.iuml
+title memory — clases (generado con pyreverse)
+set namespaceSeparator none
+class "CognitiveQueryService" as memory.src.application.services.cognitive_queries.CognitiveQueryService {
+  database
+  embedding
+  vector_store
+  contradictions(topic: str, limit: int) -> ContradictionsResponse
+  decisions(topic: str, limit: int) -> DecisionsResponse
+  past_thinking(topic: str, at: datetime, limit: int) -> PastThinkingResponse
+  patterns(limit: int) -> PatternsResponse
+  similar(node_id: UUID, limit: int) -> SimilarIdeasResponse | None
+  support(node_id: UUID, max_depth: int) -> SupportResponse | None
+}
+class "Config" as memory.src.config.Settings.Config {
+  env_file : str
+  env_file_encoding : str
+}
+class "ContextBuilderService" as memory.src.application.services.context_builder.ContextBuilderService {
+  database
+  embedding
+  graph_expansion_decay : float
+  recency_halflife_days : float
+  vector_store
+  weight_confidence : float
+  weight_importance : float
+  weight_recency : float
+  weight_similarity : float
+  build_context(query: str, limit: int, depth: int) -> ContextBundle
+}
+class "ContradictionDetectorService" as memory.src.application.services.contradiction_detector.ContradictionDetectorService {
+  database
+  embedding
+  llm
+  vector_store
+  check_node_for_contradictions(node_id: UUID, top_k: int, similarity_threshold: float) -> list[dict[str, Any]]
+  run_batch(limit: int, top_k: int, similarity_threshold: float) -> dict[str, Any]
+}
+class "DatabasePort" as memory.src.application.ports.database.DatabasePort {
+  {abstract}delete_relation(source_id: UUID, target_id: UUID, relation_type: str) -> None
+  {abstract}find_source_by_kind_uri(kind: str, uri: str) -> dict[str, Any] | None
+  {abstract}get_latest_node_version(node_id: UUID, include_archived: bool) -> dict[str, Any] | None
+  {abstract}get_node_version_asof(node_id: UUID, at: datetime) -> dict[str, Any] | None
+  {abstract}get_node_versions(node_id: UUID) -> list[dict[str, Any]]
+  {abstract}get_source(source_id: UUID) -> dict[str, Any] | None
+  {abstract}list_node_versions_since(since: datetime | None, limit: int) -> list[dict[str, Any]]
+  {abstract}query_incoming_relations(target_node_id: UUID, max_depth: int) -> list[dict[str, Any]]
+  {abstract}query_relations_asof(start_node_id: UUID, at: datetime, max_depth: int) -> list[dict[str, Any]]
+  {abstract}query_relations_recursive(start_node_id: UUID, max_depth: int) -> list[dict[str, Any]]
+  {abstract}save_event_log(event_id: UUID, event_type: str, payload: dict[str, Any]) -> None
+  {abstract}save_node(node_id: UUID, object_type: str) -> None
+  {abstract}save_node_version(node_id: UUID, version_id: UUID, version: int, title: str, content: str, author: str, metadata: dict[str, Any], parent_version_id: UUID | None, confidence: float, importance: float, status: str, evidence: list[dict[str, Any]] | None, provenance_source_id: UUID | None) -> None
+  {abstract}save_relation(source_id: UUID, target_id: UUID, relation_type: str, metadata: dict[str, Any]) -> None
+  {abstract}save_source(source_id: UUID, kind: str, uri: str | None, raw_ref: str | None, metadata: dict[str, Any]) -> None
+  {abstract}set_latest_version_tombstone(node_id: UUID, tombstoned: bool) -> bool
+}
+class "DbCognitiveObject" as memory.src.infrastructure.database.models.DbCognitiveObject {
+  created_at
+  id
+  object_type
+  versions
+}
+class "DbCognitiveRelation" as memory.src.infrastructure.database.models.DbCognitiveRelation {
+  metadata_json
+  relation_type
+  source_id
+  target_id
+  valid_from
+  valid_to
+}
+class "DbEventLog" as memory.src.infrastructure.database.models.DbEventLog {
+  event_id
+  event_type
+  logged_at
+  payload
+}
+class "DbObjectVersion" as memory.src.infrastructure.database.models.DbObjectVersion {
+  author
+  confidence
+  content
+  created_at
+  embedding
+  evidence
+  id
+  importance
+  metadata_json
+  node
+  node_id
+  parent_version_id
+  salience
+  source
+  source_id
+  status
+  title
+  tombstoned_at
+  version
+}
+class "DbReasoningEpisode" as memory.src.infrastructure.database.models.DbReasoningEpisode {
+  agent
+  correlation_id
+  ended_at
+  final_output
+  goal
+  id
+  started_at
+  status
+  steps
+}
+class "DbReasoningStep" as memory.src.infrastructure.database.models.DbReasoningStep {
+  approved
+  capability_name
+  created_at
+  episode
+  episode_id
+  feedback
+  id
+  input
+  kind
+  knowledge_refs
+  output
+  step_index
+}
+class "DbSource" as memory.src.infrastructure.database.models.DbSource {
+  captured_at
+  id
+  kind
+  metadata_json
+  raw_ref
+  uri
+}
+class "EmbeddingPort" as memory.src.application.ports.embedding.EmbeddingPort {
+  {abstract}embed_documents(texts: list[str]) -> list[list[float]]
+  {abstract}embed_query(text: str) -> list[float]
+}
+class "ExplainabilityService" as memory.src.application.services.explainability.ExplainabilityService {
+  database
+  thinking_graph
+  explain_episode(episode_id: UUID) -> ExplainEpisodeResponse | None
+  explain_node(node_id: UUID, max_depth: int) -> ExplainNodeResponse | None
+}
+class "FasterWhisperStt" as memory.src.infrastructure.adapters.faster_whisper_stt.FasterWhisperStt {
+  compute_type : str
+  device : str
+  model_size : str
+  transcribe(file_bytes: bytes, mime_type: str) -> str
+}
+class "InMemoryDatabase" as memory.src.infrastructure.adapters.in_memory_database.InMemoryDatabase {
+  delete_relation(source_id: UUID, target_id: UUID, relation_type: str) -> None
+  find_source_by_kind_uri(kind: str, uri: str) -> dict[str, Any] | None
+  get_latest_node_version(node_id: UUID, include_archived: bool) -> dict[str, Any] | None
+  get_node_version_asof(node_id: UUID, at: datetime) -> dict[str, Any] | None
+  get_node_versions(node_id: UUID) -> list[dict[str, Any]]
+  get_source(source_id: UUID) -> dict[str, Any] | None
+  list_node_versions_since(since: datetime | None, limit: int) -> list[dict[str, Any]]
+  query_incoming_relations(target_node_id: UUID, max_depth: int) -> list[dict[str, Any]]
+  query_relations_asof(start_node_id: UUID, at: datetime, max_depth: int) -> list[dict[str, Any]]
+  query_relations_recursive(start_node_id: UUID, max_depth: int) -> list[dict[str, Any]]
+  save_event_log(event_id: UUID, event_type: str, payload: dict[str, Any]) -> None
+  save_node(node_id: UUID, object_type: str) -> None
+  save_node_version(node_id: UUID, version_id: UUID, version: int, title: str, content: str, author: str, metadata: dict[str, Any], parent_version_id: UUID | None, confidence: float, importance: float, status: str, evidence: list[dict[str, Any]] | None, provenance_source_id: UUID | None) -> None
+  save_relation(source_id: UUID, target_id: UUID, relation_type: str, metadata: dict[str, Any]) -> None
+  save_source(source_id: UUID, kind: str, uri: str | None, raw_ref: str | None, metadata: dict[str, Any]) -> None
+  set_latest_version_tombstone(node_id: UUID, tombstoned: bool) -> bool
+}
+class "InMemoryStorage" as memory.src.infrastructure.adapters.in_memory_storage.InMemoryStorage {
+  delete(uri: str) -> bool
+  get(uri: str) -> bytes
+  save(file_path: str, content: bytes) -> str
+}
+class "InMemoryThinkingGraph" as memory.src.infrastructure.adapters.in_memory_thinking_graph.InMemoryThinkingGraph {
+  append_step(step_id: UUID, episode_id: UUID, step_index: int, kind: str, input_text: str | None, output_text: str | None, capability_name: str | None, approved: bool | None, feedback: str | None, knowledge_refs: list[UUID] | None) -> None
+  close_episode(episode_id: UUID, status: str, final_output: str | None) -> None
+  create_episode(episode_id: UUID, goal: str, correlation_id: UUID, agent: str) -> None
+  get_episode(episode_id: UUID) -> dict[str, Any] | None
+  get_episodes_by_node(node_id: UUID) -> list[dict[str, Any]]
+  walk_reasoning(node_id: UUID) -> list[dict[str, Any]]
+}
+class "InMemoryVectorStore" as memory.src.infrastructure.adapters.in_memory_vector_store.InMemoryVectorStore {
+  search(query_embedding: list[float], limit: int, filters: dict[str, Any] | None) -> list[VectorSearchResult]
+  upsert(vector_id: str, embedding: list[float], payload: dict[str, Any]) -> None
+}
+class "IngestionPipelineService" as memory.src.application.services.ingestion_pipeline.IngestionPipelineService {
+  agents_client
+  llm
+  memory_client
+  ocr
+  similarity_threshold : float
+  storage
+  stt
+  handle_event(event: dict[str, Any]) -> None
+}
+class "LlmPort" as memory.src.application.ports.llm.LlmPort {
+  {abstract}chat(messages: list[dict[str, str]], json_mode: bool) -> str
+  {abstract}generate(prompt: str, system_instruction: str | None, json_mode: bool) -> str
+}
+class "LocalFsStorage" as memory.src.infrastructure.adapters.local_fs_storage.LocalFsStorage {
+  base_dir : str
+  delete(uri: str) -> bool
+  get(uri: str) -> bytes
+  save(file_path: str, content: bytes) -> str
+}
+class "MinioStorage" as memory.src.infrastructure.adapters.minio_storage.MinioStorage {
+  bucket : str
+  client
+  delete(uri: str) -> bool
+  get(uri: str) -> bytes
+  save(file_path: str, content: bytes) -> str
+}
+class "MockEmbedding" as memory.src.infrastructure.adapters.mock_embedding.MockEmbedding {
+  dimension : int
+  embed_documents(texts: list[str]) -> list[list[float]]
+  embed_query(text: str) -> list[float]
+}
+class "MockLlm" as memory.src.infrastructure.adapters.mock_llm.MockLlm {
+  last_messages : list[dict[str, str]] | None
+  last_prompt : str | None
+  chat(messages: list[dict[str, str]], json_mode: bool) -> str
+  generate(prompt: str, system_instruction: str | None, json_mode: bool) -> str
+}
+class "MockOcr" as memory.src.infrastructure.adapters.mock_ocr.MockOcr {
+  extract_text(file_bytes: bytes, mime_type: str) -> str
+}
+class "MockStt" as memory.src.infrastructure.adapters.mock_stt.MockStt {
+  transcribe(file_bytes: bytes, mime_type: str) -> str
+}
+class "OcrPort" as memory.src.application.ports.ocr.OcrPort {
+  {abstract}extract_text(file_bytes: bytes, mime_type: str) -> str
+}
+class "OllamaEmbedding" as memory.src.infrastructure.adapters.ollama_embedding.OllamaEmbedding {
+  base_url
+  client
+  model : str
+  close() -> None
+  embed_documents(texts: list[str]) -> list[list[float]]
+  embed_query(text: str) -> list[float]
+}
+class "OllamaLlm" as memory.src.infrastructure.adapters.ollama_llm.OllamaLlm {
+  base_url : str
+  client
+  model_name : str
+  chat(messages: list[dict[str, str]], json_mode: bool) -> str
+  close() -> None
+  generate(prompt: str, system_instruction: str | None, json_mode: bool) -> str
+}
+class "PgDatabaseRepository" as memory.src.infrastructure.database.repositories.PgDatabaseRepository {
+  session
+  delete_relation(source_id: UUID, target_id: UUID, relation_type: str) -> None
+  find_source_by_kind_uri(kind: str, uri: str) -> dict[str, Any] | None
+  get_latest_node_version(node_id: UUID, include_archived: bool) -> dict[str, Any] | None
+  get_node_version_asof(node_id: UUID, at: datetime) -> dict[str, Any] | None
+  get_node_versions(node_id: UUID) -> list[dict[str, Any]]
+  get_source(source_id: UUID) -> dict[str, Any] | None
+  list_node_versions_since(since: datetime | None, limit: int) -> list[dict[str, Any]]
+  query_incoming_relations(target_node_id: UUID, max_depth: int) -> list[dict[str, Any]]
+  query_relations_asof(start_node_id: UUID, at: datetime, max_depth: int) -> list[dict[str, Any]]
+  query_relations_recursive(start_node_id: UUID, max_depth: int) -> list[dict[str, Any]]
+  save_event_log(event_id: UUID, event_type: str, payload: dict[str, Any]) -> None
+  save_node(node_id: UUID, object_type: str) -> None
+  save_node_version(node_id: UUID, version_id: UUID, version: int, title: str, content: str, author: str, metadata: dict[str, Any], parent_version_id: UUID | None, confidence: float, importance: float, status: str, evidence: list[dict[str, Any]] | None, provenance_source_id: UUID | None) -> None
+  save_relation(source_id: UUID, target_id: UUID, relation_type: str, metadata: dict[str, Any]) -> None
+  save_source(source_id: UUID, kind: str, uri: str | None, raw_ref: str | None, metadata: dict[str, Any]) -> None
+  set_latest_version_tombstone(node_id: UUID, tombstoned: bool) -> bool
+}
+class "PgThinkingGraphRepository" as memory.src.infrastructure.database.thinking_graph_repository.PgThinkingGraphRepository {
+  session
+  append_step(step_id: UUID, episode_id: UUID, step_index: int, kind: str, input_text: str | None, output_text: str | None, capability_name: str | None, approved: bool | None, feedback: str | None, knowledge_refs: list[UUID] | None) -> None
+  close_episode(episode_id: UUID, status: str, final_output: str | None) -> None
+  create_episode(episode_id: UUID, goal: str, correlation_id: UUID, agent: str) -> None
+  get_episode(episode_id: UUID) -> dict[str, Any] | None
+  get_episodes_by_node(node_id: UUID) -> list[dict[str, Any]]
+  walk_reasoning(node_id: UUID) -> list[dict[str, Any]]
+}
+class "PgVectorStoreRepository" as memory.src.infrastructure.vector.pgvector.PgVectorStoreRepository {
+  session
+  search(query_embedding: list[float], limit: int, filters: dict[str, Any] | None) -> list[VectorSearchResult]
+  upsert(vector_id: str, embedding: list[float], payload: dict[str, Any]) -> None
+}
+class "Settings" as memory.src.config.Settings {
+  AGENTS_URL : str
+  AUTO_LINK_SIMILARITY_THRESHOLD : float
+  CONTEXT_GRAPH_EXPANSION_DECAY : float
+  CONTEXT_RECENCY_HALFLIFE_DAYS : float
+  CONTEXT_WEIGHT_CONFIDENCE : float
+  CONTEXT_WEIGHT_IMPORTANCE : float
+  CONTEXT_WEIGHT_RECENCY : float
+  CONTEXT_WEIGHT_SIMILARITY : float
+  CONTRADICTION_SIMILARITY_THRESHOLD : float
+  CONTRADICTION_TOP_K : int
+  DATABASE_TYPE : str
+  DATABASE_URL : str
+  DEDUP_SIMILARITY_THRESHOLD : float
+  EMBEDDING_DIM : int
+  EMBEDDING_MODEL : str
+  EMBEDDING_PROVIDER : str
+  LLM_MODEL_REASONING : str
+  LLM_PROVIDER : str
+  MINDOS_ENV : str
+  MINIO_ACCESS_KEY : str
+  MINIO_BUCKET : str
+  MINIO_ENDPOINT : str
+  MINIO_SECRET_KEY : str
+  MINIO_SECURE : bool
+  OCR_LANGUAGES : str
+  OCR_PROVIDER : str
+  OLLAMA_URL : str
+  REDIS_URL : str
+  SERVICE_NAME : str
+  STORAGE_LOCAL_DIR : str
+  STORAGE_TYPE : str
+  STT_MODEL_SIZE : str
+  STT_PROVIDER : str
+}
+class "StoragePort" as memory.src.application.ports.storage.StoragePort {
+  {abstract}delete(uri: str) -> bool
+  {abstract}get(uri: str) -> bytes
+  {abstract}save(file_path: str, content: bytes) -> str
+}
+class "SttPort" as memory.src.application.ports.stt.SttPort {
+  {abstract}transcribe(file_bytes: bytes, mime_type: str) -> str
+}
+class "TesseractOcr" as memory.src.infrastructure.adapters.tesseract_ocr.TesseractOcr {
+  languages : str
+  extract_text(file_bytes: bytes, mime_type: str) -> str
+}
+class "ThinkingGraphPort" as memory.src.application.ports.thinking_graph.ThinkingGraphPort {
+  {abstract}append_step(step_id: UUID, episode_id: UUID, step_index: int, kind: str, input_text: str | None, output_text: str | None, capability_name: str | None, approved: bool | None, feedback: str | None, knowledge_refs: list[UUID] | None) -> None
+  {abstract}close_episode(episode_id: UUID, status: str, final_output: str | None) -> None
+  {abstract}create_episode(episode_id: UUID, goal: str, correlation_id: UUID, agent: str) -> None
+  {abstract}get_episode(episode_id: UUID) -> dict[str, Any] | None
+  {abstract}get_episodes_by_node(node_id: UUID) -> list[dict[str, Any]]
+  {abstract}walk_reasoning(node_id: UUID) -> list[dict[str, Any]]
+}
+class "VectorSearchResult" as memory.src.application.ports.vector_store.VectorSearchResult {
+  id : str
+  payload : dict[str, Any]
+  score : float
+}
+class "VectorStorePort" as memory.src.application.ports.vector_store.VectorStorePort {
+  {abstract}search(query_embedding: list[float], limit: int, filters: dict[str, Any] | None) -> list[VectorSearchResult]
+  {abstract}upsert(vector_id: str, embedding: list[float], payload: dict[str, Any]) -> None
+}
+memory.src.infrastructure.adapters.faster_whisper_stt.FasterWhisperStt --|> memory.src.application.ports.stt.SttPort
+memory.src.infrastructure.adapters.in_memory_database.InMemoryDatabase --|> memory.src.application.ports.database.DatabasePort
+memory.src.infrastructure.adapters.in_memory_storage.InMemoryStorage --|> memory.src.application.ports.storage.StoragePort
+memory.src.infrastructure.adapters.in_memory_thinking_graph.InMemoryThinkingGraph --|> memory.src.application.ports.thinking_graph.ThinkingGraphPort
+memory.src.infrastructure.adapters.in_memory_vector_store.InMemoryVectorStore --|> memory.src.application.ports.vector_store.VectorStorePort
+memory.src.infrastructure.adapters.local_fs_storage.LocalFsStorage --|> memory.src.application.ports.storage.StoragePort
+memory.src.infrastructure.adapters.minio_storage.MinioStorage --|> memory.src.application.ports.storage.StoragePort
+memory.src.infrastructure.adapters.mock_embedding.MockEmbedding --|> memory.src.application.ports.embedding.EmbeddingPort
+memory.src.infrastructure.adapters.mock_llm.MockLlm --|> memory.src.application.ports.llm.LlmPort
+memory.src.infrastructure.adapters.mock_ocr.MockOcr --|> memory.src.application.ports.ocr.OcrPort
+memory.src.infrastructure.adapters.mock_stt.MockStt --|> memory.src.application.ports.stt.SttPort
+memory.src.infrastructure.adapters.ollama_embedding.OllamaEmbedding --|> memory.src.application.ports.embedding.EmbeddingPort
+memory.src.infrastructure.adapters.ollama_llm.OllamaLlm --|> memory.src.application.ports.llm.LlmPort
+memory.src.infrastructure.adapters.tesseract_ocr.TesseractOcr --|> memory.src.application.ports.ocr.OcrPort
+memory.src.infrastructure.database.repositories.PgDatabaseRepository --|> memory.src.application.ports.database.DatabasePort
+memory.src.infrastructure.database.thinking_graph_repository.PgThinkingGraphRepository --|> memory.src.application.ports.thinking_graph.ThinkingGraphPort
+memory.src.infrastructure.vector.pgvector.PgVectorStoreRepository --|> memory.src.application.ports.vector_store.VectorStorePort
+memory.src.application.ports.database.DatabasePort --o memory.src.application.services.cognitive_queries.CognitiveQueryService : database
+memory.src.application.ports.database.DatabasePort --o memory.src.application.services.context_builder.ContextBuilderService : database
+memory.src.application.ports.database.DatabasePort --o memory.src.application.services.contradiction_detector.ContradictionDetectorService : database
+memory.src.application.ports.database.DatabasePort --o memory.src.application.services.explainability.ExplainabilityService : database
+memory.src.application.ports.embedding.EmbeddingPort --o memory.src.application.services.cognitive_queries.CognitiveQueryService : embedding
+memory.src.application.ports.embedding.EmbeddingPort --o memory.src.application.services.context_builder.ContextBuilderService : embedding
+memory.src.application.ports.embedding.EmbeddingPort --o memory.src.application.services.contradiction_detector.ContradictionDetectorService : embedding
+memory.src.application.ports.llm.LlmPort --o memory.src.application.services.contradiction_detector.ContradictionDetectorService : llm
+memory.src.application.ports.llm.LlmPort --o memory.src.application.services.ingestion_pipeline.IngestionPipelineService : llm
+memory.src.application.ports.ocr.OcrPort --o memory.src.application.services.ingestion_pipeline.IngestionPipelineService : ocr
+memory.src.application.ports.storage.StoragePort --o memory.src.application.services.ingestion_pipeline.IngestionPipelineService : storage
+memory.src.application.ports.stt.SttPort --o memory.src.application.services.ingestion_pipeline.IngestionPipelineService : stt
+memory.src.application.ports.thinking_graph.ThinkingGraphPort --o memory.src.application.services.explainability.ExplainabilityService : thinking_graph
+memory.src.application.ports.vector_store.VectorStorePort --o memory.src.application.services.cognitive_queries.CognitiveQueryService : vector_store
+memory.src.application.ports.vector_store.VectorStorePort --o memory.src.application.services.context_builder.ContextBuilderService : vector_store
+memory.src.application.ports.vector_store.VectorStorePort --o memory.src.application.services.contradiction_detector.ContradictionDetectorService : vector_store
+@enduml

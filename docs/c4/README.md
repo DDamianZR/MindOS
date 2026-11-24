@@ -6,6 +6,9 @@ Modelo [C4](https://c4model.com/) de MindOS escrito en [LikeC4](https://likec4.d
 Genera un sitio **estático e interactivo** (pan/zoom, navegación entre niveles, tema
 claro/oscuro, export a PNG/Mermaid/PlantUML/D2) que se publica en **GitHub Pages**.
 
+> Diagramas UML detallados (clases, secuencia, estados, despliegue, ER, C4 nivel 3):
+> [`docs/uml`](../uml).
+
 ## Qué hay aquí
 
 | Archivo | Contenido |

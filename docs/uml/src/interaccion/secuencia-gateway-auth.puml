@@ -1,0 +1,71 @@
+@startuml
+!include ../_tema.iuml
+title Secuencia — Autenticación, rate-limit y proxy en el Gateway
+
+autonumber "<b>[00]"
+skinparam responseMessageBelowArrow true
+
+actor "Dueño" as owner
+participant "Dashboard" as dashboard
+participant "Traefik" as traefik
+box "Gateway" #F1F5F9
+  participant "correlation_and_rate_limit\n_middleware" as mw
+  participant "RateLimiterPort\n(RedisRateLimiter)" as limiter
+  participant "login / require_auth" as auth
+  participant "proxy()" as proxy
+end box
+participant "Servicio interno\n(memory · agents · comms · mcp)" as svc
+
+== Inicio de sesión ==
+owner -> dashboard : usuario + contraseña
+dashboard -> traefik : POST /api/v1/auth/login (HTTPS)
+traefik -> mw : HTTP
+activate mw
+mw -> mw : correlation_id = X-Correlation-Id ?? uuid7()
+mw -> limiter : hit(client_ip, límite, ventana)
+limiter --> mw : dentro del límite
+mw -> auth : login(username, password)
+auth -> auth : verify_password (Argon2) contra\nMINDOS_ADMIN_PASSWORD_HASH
+alt credenciales válidas
+  auth --> mw : {access_token (JWT), expires_in_minutes}
+else inválidas
+  auth --> mw : 401
+end
+mw --> dashboard : respuesta + X-Correlation-Id
+deactivate mw
+
+== Petición autenticada ==
+dashboard -> traefik : GET /api/v1/memory/node/{id}/history\nAuthorization: Bearer <JWT>
+traefik -> mw : HTTP
+activate mw
+mw -> limiter : hit(client_ip, …)
+alt excede el límite
+  limiter --> mw : false
+  mw --> dashboard : 429 Too Many Requests
+else dentro del límite (o Redis caído → fail-open con warning)
+  limiter --> mw : true
+  mw -> proxy : call_next(request)
+  activate proxy
+  proxy -> auth : require_auth(request)
+  alt X-Api-Key == MINDOS_API_KEY
+    auth --> proxy : identidad "service"
+  else Bearer JWT válido
+    auth --> proxy : identidad = sub
+  else sin credenciales válidas
+    auth --> proxy : 401 Unauthorized
+  end
+  proxy -> proxy : SERVICE_ROUTES[service_key] (404 si no existe)\nlee body con tope MAX_BODY_BYTES (413)
+  proxy -> svc : método + /api/v1/{servicio}/{ruta}\nsin hop-by-hop headers + X-Correlation-Id
+  alt servicio inalcanzable
+    svc --> proxy : httpx.RequestError
+    proxy --> mw : 502 Bad Gateway
+  else
+    svc --> proxy : respuesta
+    proxy --> mw : misma respuesta (status, headers, body)
+  end
+  deactivate proxy
+  mw --> dashboard : respuesta + X-Correlation-Id
+end
+deactivate mw
+
+@enduml

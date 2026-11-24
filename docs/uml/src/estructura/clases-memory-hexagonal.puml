@@ -1,0 +1,148 @@
+@startuml
+!include ../_tema.iuml
+title Memory Service — Puertos y adaptadores (arquitectura hexagonal)
+
+hide empty members
+left to right direction
+skinparam nodesep 25
+skinparam ranksep 90
+
+package "application.services" <<Rectangle>> {
+  class IngestionPipelineService {
+    + handle_event(event)
+    - _resolve_content(data)
+    - _ingest(...)
+    - _auto_link(node_id, text)
+    - _maybe_dispatch_agent(...)
+  }
+  class ContextBuilderService {
+    + build_context(query, limit, depth) : ContextBundle
+  }
+  class ContradictionDetectorService {
+    + check_node_for_contradictions(node_id, top_k, threshold)
+    + run_batch(limit, top_k, threshold)
+  }
+  class ExplainabilityService {
+    + explain_node(node_id, max_depth)
+    + explain_episode(episode_id)
+  }
+  class CognitiveQueryService {
+    + past_thinking(topic, at)
+    + similar(node_id)
+    + decisions(topic)
+    + support(node_id)
+    + contradictions(topic)
+    + patterns()
+  }
+}
+
+package "application.ports" <<Rectangle>> {
+  interface DatabasePort {
+    + save_node(...)
+    + save_node_version(...)
+    + get_latest_node_version(node_id, include_archived)
+    + get_node_version_asof(node_id, at)
+    + save_relation(...) / delete_relation(...)
+    + query_relations_recursive(node_id, depth)
+    + query_relations_asof(node_id, at, depth)
+    + save_source(...) / find_source_by_kind_uri(...)
+    + set_latest_version_tombstone(node_id, flag)
+    + save_event_log(...)
+  }
+  interface VectorStorePort {
+    + upsert(vector_id, embedding, payload)
+    + search(query_vector, limit) : VectorSearchResult[*]
+  }
+  interface ThinkingGraphPort {
+    + create_episode(...) / close_episode(...)
+    + append_step(...)
+    + get_episode(id) / get_episodes_by_node(id)
+    + walk_reasoning(node_id)
+  }
+  interface EmbeddingPort {
+    + embed_query(text) : float[*]
+    + embed_documents(texts)
+  }
+  interface LlmPort {
+    + generate(prompt, json_mode)
+    + chat(messages)
+  }
+  interface OcrPort {
+    + extract_text(bytes, mime) : str
+  }
+  interface SttPort {
+    + transcribe(bytes, mime) : str
+  }
+  interface StoragePort {
+    + save(path, bytes) : uri
+    + get(uri) / delete(uri)
+  }
+}
+
+package "infrastructure (producción)" <<Rectangle>> {
+  class PgDatabaseRepository
+  class PgVectorStoreRepository
+  class PgThinkingGraphRepository
+  class OllamaEmbedding
+  class OllamaLlm
+  class TesseractOcr
+  class FasterWhisperStt
+  class LocalFsStorage
+  class MinioStorage
+}
+
+package "infrastructure (tests / dev)" <<Rectangle>> {
+  class InMemoryDatabase
+  class InMemoryVectorStore
+  class InMemoryThinkingGraph
+  class MockEmbedding
+  class MockLlm
+  class MockOcr
+  class MockStt
+  class InMemoryStorage
+}
+
+' ── Uso de puertos desde la aplicación ──
+IngestionPipelineService --> StoragePort
+IngestionPipelineService --> OcrPort
+IngestionPipelineService --> SttPort
+IngestionPipelineService --> LlmPort
+ContextBuilderService --> VectorStorePort
+ContextBuilderService --> DatabasePort
+ContextBuilderService --> EmbeddingPort
+ContradictionDetectorService --> DatabasePort
+ContradictionDetectorService --> VectorStorePort
+ContradictionDetectorService --> EmbeddingPort
+ContradictionDetectorService --> LlmPort
+ExplainabilityService --> DatabasePort
+ExplainabilityService --> ThinkingGraphPort
+CognitiveQueryService --> DatabasePort
+CognitiveQueryService --> VectorStorePort
+CognitiveQueryService --> EmbeddingPort
+
+' ── Implementaciones ──
+DatabasePort <|.. PgDatabaseRepository
+DatabasePort <|.. InMemoryDatabase
+VectorStorePort <|.. PgVectorStoreRepository
+VectorStorePort <|.. InMemoryVectorStore
+ThinkingGraphPort <|.. PgThinkingGraphRepository
+ThinkingGraphPort <|.. InMemoryThinkingGraph
+EmbeddingPort <|.. OllamaEmbedding
+EmbeddingPort <|.. MockEmbedding
+LlmPort <|.. OllamaLlm
+LlmPort <|.. MockLlm
+OcrPort <|.. TesseractOcr
+OcrPort <|.. MockOcr
+SttPort <|.. FasterWhisperStt
+SttPort <|.. MockStt
+StoragePort <|.. LocalFsStorage
+StoragePort <|.. MinioStorage
+StoragePort <|.. InMemoryStorage
+
+note top of IngestionPipelineService
+  No usa DatabasePort/VectorStorePort directamente:
+  reutiliza ingest/search/relation por HTTP loopback
+  (ASGITransport) hacia su propio servicio.
+end note
+
+@enduml

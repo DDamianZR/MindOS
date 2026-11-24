@@ -1,0 +1,74 @@
+@startuml
+' C4 · Nivel 3 (Componentes) del Memory Service, con C4-PlantUML (incluido en la stdlib de
+' PlantUML, no requiere red). Complementa los niveles 1-2 de docs/c4 (LikeC4).
+!include <C4/C4_Component>
+
+LAYOUT_TOP_DOWN()
+title MindOS — Memory Service · Componentes (C4 · Nivel 3)
+
+Container(gateway, "Gateway", "FastAPI", "Proxy autenticado: /api/v1/{memory|thinking|cognitive}/…")
+Container(agents, "Agents Service", "FastAPI · LangGraph", "Planner → Executor → Reviewer")
+ContainerQueue(redis, "Redis Streams", "Redis 7", "mindos.comms (entrada) · mindos.memory (salida)")
+
+Container_Boundary(memory, "Memory Service") {
+  Component(api, "API de memoria", "FastAPI · main.py", "ingest · search · context · relation · neighbors · history · provenance · timetravel · archive/restore · contradictions/scan")
+  Component(thinking_api, "thinking_router", "FastAPI APIRouter", "Episodios y pasos de razonamiento · /explain")
+  Component(cognitive_api, "cognitive_router", "FastAPI APIRouter", "Las 7 preguntas cognitivas · registrar decisión")
+
+  Component(pipeline, "IngestionPipelineService", "Consumidor del Event Bus", "Resuelve medios (Storage + OCR/STT), ingiere, auto-enlaza y dispara agente si es pregunta")
+  Component(context, "ContextBuilderService", "GraphRAG v2", "Similitud vectorial + expansión por grafo + reranking; fragmentos citables")
+  Component(contradictions, "ContradictionDetectorService", "Servicio de aplicación", "Similitud + confirmación LLM para fact/hypothesis")
+  Component(explain, "ExplainabilityService", "Servicio de aplicación", "Árbol de evidencias + episodios que produjeron un nodo")
+  Component(cognitive, "CognitiveQueryService", "Servicio de aplicación", "past-thinking · similar · decisions · support · contradictions · patterns")
+
+  Component(db_repo, "PgDatabaseRepository", "DatabasePort", "Nodos, versiones, fuentes, relaciones bitemporales, event_log")
+  Component(vector_repo, "PgVectorStoreRepository", "VectorStorePort", "Búsqueda por coseno en pgvector")
+  Component(tg_repo, "PgThinkingGraphRepository", "ThinkingGraphPort", "reasoning_episodes · reasoning_steps")
+  Component(ai, "OllamaEmbedding · OllamaLlm", "EmbeddingPort · LlmPort", "nomic-embed-text (768) · qwen3")
+  Component(media, "TesseractOcr · FasterWhisperStt", "OcrPort · SttPort", "Texto de imágenes/PDF · transcripción de audio")
+  Component(storage, "LocalFsStorage / MinioStorage", "StoragePort", "Adjuntos originales")
+}
+
+ContainerDb(postgres, "PostgreSQL 16 + pgvector", "SQL", "Conocimiento, vectores y Thinking Graph")
+System_Ext(ollama, "Ollama", "LLM y embeddings locales")
+ContainerDb(blobs, "Blobs", "FS local / MinIO", "PDF, imágenes, audio")
+
+Rel(gateway, api, "Reenvía", "HTTP/JSON")
+Rel(gateway, thinking_api, "Reenvía", "HTTP/JSON")
+Rel(gateway, cognitive_api, "Reenvía", "HTTP/JSON")
+Rel(agents, api, "Contexto, capacidades, outcome", "HTTP/JSON")
+Rel(agents, thinking_api, "Registra la traza", "HTTP/JSON")
+Rel(redis, pipeline, "MessageReceivedEvent", "XREADGROUP")
+
+Rel(pipeline, api, "ingest · search · relation", "HTTP loopback (ASGI)")
+Rel(pipeline, media, "Extrae texto")
+Rel(pipeline, storage, "Guarda adjunto")
+Rel(pipeline, agents, "Dispara agente si es pregunta", "HTTP")
+
+Rel(api, context, "POST /context")
+Rel(api, contradictions, "On-ingest y scan")
+Rel(api, db_repo, "Lee/escribe")
+Rel(api, vector_repo, "Upsert / búsqueda")
+Rel(api, ai, "Embeddings")
+Rel(api, redis, "knowledge.* · relation.* · contradiction.*", "XADD")
+Rel(thinking_api, explain, "Usa")
+Rel(thinking_api, tg_repo, "Lee/escribe")
+Rel(cognitive_api, cognitive, "Usa")
+
+Rel(context, vector_repo, "Semillas")
+Rel(context, db_repo, "Expansión por grafo")
+Rel(contradictions, ai, "Confirma con LLM")
+Rel(explain, db_repo, "Evidencias")
+Rel(explain, tg_repo, "Episodios")
+Rel(cognitive, db_repo, "Consultas temporales")
+Rel(cognitive, vector_repo, "Candidatos similares")
+Rel(pipeline, ai, "Clasifica relación / pregunta (LLM)")
+
+Rel(db_repo, postgres, "SQLAlchemy async", "asyncpg")
+Rel(vector_repo, postgres, "pgvector", "asyncpg")
+Rel(tg_repo, postgres, "SQLAlchemy async", "asyncpg")
+Rel(ai, ollama, "HTTP")
+Rel(storage, blobs, "FS / S3 API")
+
+SHOW_LEGEND()
+@enduml

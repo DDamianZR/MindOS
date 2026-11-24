@@ -1,0 +1,67 @@
+@startuml
+!include ../_tema.iuml
+title Secuencia — Resolución de una aprobación pendiente (human-in-the-loop)
+
+autonumber "<b>[00]"
+skinparam responseMessageBelowArrow true
+
+actor "Dueño" as owner
+participant "Dashboard\n(bandeja de aprobaciones)" as dashboard
+participant "Gateway" as gateway
+box "Agents Service" #F1F5F9
+  participant "approvals_router" as router
+  participant "ApprovalPort\n(InMemoryApprovalStore)" as store
+  participant "CapabilityExecutor" as executor
+  participant "HttpReasoningRecorder" as recorder
+end box
+participant "Servicio proveedor\n(p. ej. Memory)" as provider
+participant "Memory Service\n(Thinking Graph)" as memory
+
+owner -> dashboard : abre /approvals
+dashboard -> gateway : GET /api/v1/approvals/  (Bearer JWT)
+gateway -> router : proxy
+router -> store : list_pending()
+store --> router : [ApprovalRequest pending]
+router --> dashboard : ListApprovalsResponse
+
+owner -> dashboard : Aprobar / Rechazar
+dashboard -> gateway : POST /api/v1/approvals/{id}/resolve\n{approved, resolved_by}
+gateway -> router : proxy (X-Correlation-Id)
+activate router
+router -> store : get(id)
+store --> router : record
+
+alt no existe
+  router --> gateway : 404
+else ya resuelta (status ≠ pending)
+  router --> gateway : 409 Conflict
+else pendiente
+  alt approved = true
+    router -> executor : execute_capability_by_name(capability, inputs)
+    activate executor
+    executor -> provider : POST {endpoint_path}?{inputs}
+    provider --> executor : resultado
+    executor --> router : ExecutionResult(completed | failed)
+    deactivate executor
+  else approved = false
+    router -> router : result_output = "Rechazada por el usuario…"
+  end
+
+  router -> store : resolve(id, approved | rejected, result_output)
+  router -> memory : GET /api/v1/thinking/episodes/{episode_id}
+  memory --> router : pasos → siguiente step_index
+  router -> recorder : record_step(kind = execute, approved)
+  recorder -> memory : POST …/episodes/{id}/steps
+  router -> recorder : close_episode(completed | failed | rejected)
+  recorder -> memory : POST …/episodes/{id}/close
+  router --> gateway : ResolveApprovalResponse(approval, executed)
+end
+deactivate router
+gateway --> dashboard : respuesta + X-Correlation-Id
+
+note over owner, dashboard
+  La misma aprobación también se anuncia por WhatsApp
+  cuando la meta traía ""reply_to"" (ver ejecución del agente).
+end note
+
+@enduml

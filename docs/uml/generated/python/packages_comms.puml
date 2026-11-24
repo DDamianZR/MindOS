@@ -1,0 +1,25 @@
+@startuml packages_comms
+!include ../../src/_tema.iuml
+title comms — paquetes (generado con pyreverse)
+left to right direction
+set namespaceSeparator none
+package "comms.src.application.ports.communication" as comms.src.application.ports.communication {
+}
+package "comms.src.cli" as comms.src.cli {
+}
+package "comms.src.config" as comms.src.config {
+}
+package "comms.src.infrastructure.adapters.event_bus_inbound_handler" as comms.src.infrastructure.adapters.event_bus_inbound_handler {
+}
+package "comms.src.infrastructure.adapters.whatsapp_outbound_adapter" as comms.src.infrastructure.adapters.whatsapp_outbound_adapter {
+}
+package "comms.src.main" as comms.src.main {
+}
+comms.src.cli --> comms.src.config
+comms.src.infrastructure.adapters.event_bus_inbound_handler --> comms.src.application.ports.communication
+comms.src.infrastructure.adapters.whatsapp_outbound_adapter --> comms.src.application.ports.communication
+comms.src.main --> comms.src.application.ports.communication
+comms.src.main --> comms.src.config
+comms.src.main --> comms.src.infrastructure.adapters.event_bus_inbound_handler
+comms.src.main --> comms.src.infrastructure.adapters.whatsapp_outbound_adapter
+@enduml

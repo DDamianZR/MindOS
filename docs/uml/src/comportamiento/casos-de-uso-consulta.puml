@@ -1,0 +1,60 @@
+@startuml
+!include ../_tema.iuml
+title MindOS — Casos de uso: consulta, razonamiento y gestión
+
+left to right direction
+
+actor "Dueño de MindOS" as owner
+actor "Asistente de IA\n(cliente MCP)" as assistant
+
+rectangle "MindOS" {
+  usecase "Iniciar sesión (JWT)" as UC_login
+  usecase "Buscar conocimiento\n(semántica)" as UC_search
+  usecase "Obtener contexto\nGraphRAG con citas" as UC_context
+  usecase "Hacer las 7 preguntas\ncognitivas" as UC_cognitive
+  usecase "Explicar cómo se llegó\na un nodo (/explain)" as UC_explain
+  usecase "Explorar grafo, historial\ny viaje en el tiempo (as-of)" as UC_explore
+  usecase "Revisar contradicciones" as UC_contra
+  usecase "Plantear una meta\nal agente" as UC_goal
+  usecase "Registrar la traza\nde razonamiento" as UC_trace
+  usecase "Pedir aprobación de una\ncapacidad sensible" as UC_ask_approval
+  usecase "Resolver aprobación" as UC_resolve
+  usecase "Responder por el\ncanal de origen" as UC_reply
+  usecase "Registrar decisión" as UC_decision
+  usecase "Archivar / restaurar nodo\n(soft-delete)" as UC_archive
+}
+
+actor "WhatsApp" as whatsapp <<sistema>>
+actor "Ollama\n(LLM + embeddings)" as ollama <<sistema>>
+
+owner --> UC_login
+owner --> UC_search
+owner --> UC_context
+owner --> UC_cognitive
+owner --> UC_explain
+owner --> UC_explore
+owner --> UC_contra
+owner --> UC_goal
+owner --> UC_resolve
+owner --> UC_decision
+owner --> UC_archive
+
+assistant --> UC_search
+assistant --> UC_context
+assistant --> UC_cognitive
+assistant --> UC_explain
+
+UC_goal ..> UC_context : <<include>>
+UC_goal ..> UC_trace : <<include>>
+UC_goal <.. UC_ask_approval : <<extend>>\nrequires_approval
+UC_goal <.. UC_reply : <<extend>>\nsi la meta trae reply_to
+UC_resolve ..> UC_trace : <<include>>
+UC_explain ..> UC_trace : <<use>>
+
+UC_ask_approval -- whatsapp
+UC_reply -- whatsapp
+UC_search -- ollama
+UC_context -- ollama
+UC_goal -- ollama
+
+@enduml

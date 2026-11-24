@@ -1,0 +1,42 @@
+@startuml packages_schemas
+!include ../../src/_tema.iuml
+title schemas — paquetes (generado con pyreverse)
+left to right direction
+set namespaceSeparator none
+package "schemas.mindos_schemas" as schemas.mindos_schemas {
+}
+package "schemas.mindos_schemas.api" as schemas.mindos_schemas.api {
+}
+package "schemas.mindos_schemas.api.v1" as schemas.mindos_schemas.api.v1 {
+}
+package "schemas.mindos_schemas.api.v1.agent_dto" as schemas.mindos_schemas.api.v1.agent_dto {
+}
+package "schemas.mindos_schemas.api.v1.approval_dto" as schemas.mindos_schemas.api.v1.approval_dto {
+}
+package "schemas.mindos_schemas.api.v1.cognitive_dto" as schemas.mindos_schemas.api.v1.cognitive_dto {
+}
+package "schemas.mindos_schemas.api.v1.memory_dto" as schemas.mindos_schemas.api.v1.memory_dto {
+}
+package "schemas.mindos_schemas.api.v1.thinking_dto" as schemas.mindos_schemas.api.v1.thinking_dto {
+}
+package "schemas.mindos_schemas.capabilities" as schemas.mindos_schemas.capabilities {
+}
+package "schemas.mindos_schemas.domain" as schemas.mindos_schemas.domain {
+}
+package "schemas.mindos_schemas.domain.object_type" as schemas.mindos_schemas.domain.object_type {
+}
+package "schemas.mindos_schemas.domain.relation_type" as schemas.mindos_schemas.domain.relation_type {
+}
+package "schemas.mindos_schemas.domain.source" as schemas.mindos_schemas.domain.source {
+}
+package "schemas.mindos_schemas.events" as schemas.mindos_schemas.events {
+}
+package "schemas.mindos_schemas.events.base" as schemas.mindos_schemas.events.base {
+}
+package "schemas.mindos_schemas.events.v1" as schemas.mindos_schemas.events.v1 {
+}
+package "schemas.mindos_schemas.events.v1.communication_events" as schemas.mindos_schemas.events.v1.communication_events {
+}
+package "schemas.mindos_schemas.events.v1.memory_events" as schemas.mindos_schemas.events.v1.memory_events {
+}
+@enduml
