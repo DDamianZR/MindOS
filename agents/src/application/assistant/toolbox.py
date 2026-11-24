@@ -16,7 +16,10 @@ from mindos_common.logging import get_logger
 from mindos_schemas.domain import ObjectType
 from pydantic import BaseModel, Field, ValidationError
 
+from agents.src.application.assistant.routines import ScheduleError, register_routine
 from agents.src.application.ports.memory_gateway import MemoryGatewayError, MemoryGatewayPort
+from agents.src.application.ports.routine_store import RoutineStorePort
+from agents.src.config import settings
 
 logger = get_logger("assistant_toolbox")
 
@@ -55,6 +58,17 @@ class PastThinkingInput(BaseModel):
 
 class NodeInput(BaseModel):
     node_id: UUID
+
+
+class CreateRoutineInput(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    prompt: str = Field(min_length=1, max_length=4000)
+    schedule: str = Field(min_length=1)
+    timezone: str | None = None
+
+
+class ListRoutinesInput(BaseModel):
+    pass
 
 
 @dataclass(frozen=True)
@@ -225,6 +239,54 @@ TOOL_SPECS: list[ToolSpec] = [
         },
         input_model=NodeInput,
     ),
+    ToolSpec(
+        name="create_routine",
+        label="Programando una rutina",
+        description=(
+            "Programa una tarea recurrente para que el asistente la haga solo, a la hora indicada. "
+            "La rutina queda pendiente y no se ejecuta hasta que la persona la active en Agentes → Rutinas. "
+            "Díselo así, con esas palabras: tiene que activarla en Agentes → Rutinas para que empiece a correr. "
+            "Úsala cuando pida un recordatorio o un resumen periódico, por ejemplo cada lunes por la mañana. "
+            "`schedule` es una expresión cron de 5 campos (minuto hora día mes día-de-semana): "
+            "'0 9 * * 1' significa cada lunes a las 9:00. `timezone` es opcional (zona IANA); "
+            "si no la indicas, se usa la del servidor."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Nombre corto de la rutina, reconocible en la lista."},
+                "prompt": {
+                    "type": "string",
+                    "description": "Lo que el asistente debe hacer en cada ejecución, completo y sin depender de este chat.",
+                },
+                "schedule": {
+                    "type": "string",
+                    "description": "Expresión cron de 5 campos. Ejemplo: '0 9 * * 1' = cada lunes a las 9:00.",
+                },
+                "timezone": {
+                    "type": "string",
+                    "description": "Zona horaria IANA, por ejemplo America/Mexico_City. Si se omite, se usa la del servidor.",
+                },
+            },
+            "required": ["title", "prompt", "schedule"],
+        },
+        input_model=CreateRoutineInput,
+    ),
+    ToolSpec(
+        name="list_routines",
+        label="Revisando tus rutinas",
+        description=(
+            "Lista las rutinas programadas que no están archivadas: pendientes de activar, activas y en pausa. "
+            "Cada una trae su horario en español, su estado y la próxima ejecución. Úsala cuando la persona "
+            "pregunte qué tareas recurrentes tiene, o para confirmar que una rutina que acabas de proponer quedó guardada."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        input_model=ListRoutinesInput,
+    ),
 ]
 
 _SPECS_BY_NAME = {spec.name: spec for spec in TOOL_SPECS}
@@ -269,9 +331,17 @@ class AssistantToolbox:
     """Ejecuta las herramientas del asistente. Nunca lanza: un fallo vuelve como resultado de
     error para que el modelo pueda reaccionar (reintentar con otros parámetros o avisar)."""
 
-    def __init__(self, memory: MemoryGatewayPort, author: str = "usuario"):
+    def __init__(
+        self,
+        memory: MemoryGatewayPort,
+        author: str = "usuario",
+        routine_store: RoutineStorePort | None = None,
+    ):
         self._memory = memory
         self._author = author or "usuario"
+        # Sin store (tests y servicios que no programan nada) las herramientas de rutinas
+        # avisan en vez de romper el turno.
+        self._routines = routine_store
 
     @property
     def specs(self) -> list[ToolSpec]:
@@ -384,6 +454,70 @@ class AssistantToolbox:
         return ToolOutcome(
             content=_dump(data), summary=_plural(len(versions), "versión", "versiones"),
         )
+
+    def _routines_unavailable(self) -> ToolOutcome:
+        return ToolOutcome(
+            content="Las rutinas no están disponibles en este servicio.",
+            is_error=True,
+            summary="Rutinas no disponibles",
+        )
+
+    async def _create_routine(self, args: CreateRoutineInput) -> ToolOutcome:
+        store = self._routines
+        if store is None:
+            return self._routines_unavailable()
+        try:
+            routine = await register_routine(
+                store,
+                title=args.title,
+                prompt=args.prompt,
+                schedule=args.schedule,
+                timezone_name=args.timezone,
+                configured_timezone=settings.ROUTINES_TIMEZONE,
+                status="pending_activation",
+                created_by="assistant",
+            )
+        except ScheduleError as exc:
+            return ToolOutcome(content=str(exc), is_error=True, summary="Programación no válida")
+        return ToolOutcome(
+            content=_dump({
+                "created": True,
+                "id": routine.id,
+                "title": routine.title,
+                "status": routine.status,
+                "schedule_description": routine.schedule_description,
+                "timezone": routine.timezone,
+                "next_run_at": routine.next_run_at,
+                "note": (
+                    "La rutina quedó pendiente. Dile a la persona que tiene que activarla "
+                    "en Agentes → Rutinas para que empiece a ejecutarse."
+                ),
+            }),
+            summary=f"Rutina pendiente: {routine.title}",
+        )
+
+    async def _list_routines(self, args: ListRoutinesInput) -> ToolOutcome:
+        store = self._routines
+        if store is None:
+            return self._routines_unavailable()
+        routines = await store.list_routines()
+        payload = [
+            {
+                "id": routine.id,
+                "title": routine.title,
+                "prompt": routine.prompt,
+                "schedule": routine.schedule,
+                "schedule_description": routine.schedule_description,
+                "timezone": routine.timezone,
+                "status": routine.status,
+                "next_run_at": routine.next_run_at,
+                "last_run_at": routine.last_run_at,
+                "runs_count": routine.runs_count,
+            }
+            for routine in routines
+        ]
+        summary = _plural(len(payload), "rutina", "rutinas") if payload else "Sin rutinas"
+        return ToolOutcome(content=_dump({"routines": payload}), summary=summary)
 
     @staticmethod
     def _passthrough(data: dict[str, Any], singular: str, plural: str) -> ToolOutcome:
