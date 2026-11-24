@@ -1,28 +1,30 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter_Tight, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import { AuthProvider } from "@/lib/auth";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Inter Tight: la sans de todo el sistema (texto, títulos, navegación), con tracking negativo
+// en tamaños grandes. JetBrains Mono: la voz mono de etiquetas, insignias y botones.
+const interTight = Inter_Tight({
+  variable: "--font-inter-tight",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jetBrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
   title: "MindOS",
-  description: "Dashboard de MindOS: busca, explora el grafo de conocimiento y razona sobre tu memoria de largo plazo.",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "MindOS" },
+  description: "Tu memoria de largo plazo, con un agente que la consulta, la conecta y actúa por ti.",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "MindOS" },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#18181b",
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({
@@ -31,11 +33,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="es"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">
+    <html lang="es" className={`${interTight.variable} ${jetBrainsMono.variable} h-full antialiased`}>
+      <body className="flex h-full min-h-full flex-col">
         <ServiceWorkerRegistration />
         <AuthProvider>{children}</AuthProvider>
       </body>

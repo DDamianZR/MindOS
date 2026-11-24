@@ -5,3 +5,7 @@ uvicorn[standard]>=0.20.0
 httpx>=0.24.0
 langgraph>=0.0.10
 structlog
+# F7: API de Claude (asistente personal + Planner/Reviewer).
+anthropic>=2.9.0,<3.0.0
+# Fase 8: rutinas programadas (expresiones cron).
+croniter>=2.0,<7

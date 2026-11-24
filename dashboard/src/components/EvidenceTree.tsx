@@ -1,25 +1,28 @@
 import { relationLabel } from "@/lib/object-type-style";
 import type { ExplainEvidenceDto } from "@/lib/types";
 
+import { Badge } from "./ui";
 import { ObjectTypeBadge } from "./ObjectTypeBadge";
 
 export function EvidenceTree({ evidence, depth }: { evidence: ExplainEvidenceDto; depth: number }) {
   return (
-    <li>
-      <div className="rounded-md border border-zinc-200 p-2 text-sm dark:border-zinc-800">
-        <div className="mb-1 flex flex-wrap items-center gap-2">
+    <li className="border-l border-hairline pl-4">
+      <div className="py-3">
+        <div className="flex flex-wrap items-center gap-2">
           <ObjectTypeBadge objectType={evidence.object_type} />
-          <span className="font-medium text-zinc-900 dark:text-zinc-50">{evidence.title}</span>
-          <span className="text-xs text-zinc-400">{relationLabel(evidence.relation_type)}</span>
+          <span className="text-body-sm font-medium text-obsidian">{evidence.title}</span>
+          <Badge>{relationLabel(evidence.relation_type)}</Badge>
         </div>
-        <p className="line-clamp-2 text-zinc-600 dark:text-zinc-400">{evidence.content}</p>
-        <div className="mt-1 text-xs text-zinc-400">
+        {evidence.content && (
+          <p className="mt-2 line-clamp-2 text-body-sm text-slate">{evidence.content}</p>
+        )}
+        <p className="mt-2 font-mono text-mono-sm text-muted">
           confianza {evidence.confidence.toFixed(2)} · importancia {evidence.importance.toFixed(2)}
-          {evidence.source && ` · origen: ${evidence.source.kind}`}
-        </div>
+          {evidence.source && ` · origen ${evidence.source.kind}`}
+        </p>
       </div>
       {evidence.supporting.length > 0 && depth < 6 && (
-        <ul className="mt-2 space-y-2 border-l-2 border-zinc-200 pl-4 dark:border-zinc-800">
+        <ul className="space-y-1">
           {evidence.supporting.map((child, i) => (
             <EvidenceTree key={`${child.node_id}-${i}`} evidence={child} depth={depth + 1} />
           ))}

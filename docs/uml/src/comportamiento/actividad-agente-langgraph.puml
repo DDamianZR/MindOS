@@ -1,0 +1,51 @@
+@startuml
+!include ../_tema.iuml
+title Actividad — Bucle Planner → Executor → Reviewer (LangGraph)
+
+|Agents Service|
+start
+:Recuperar contexto GraphRAG\n(POST /memory/context);
+:Construir AgentState inicial\n(retries = 0, max_retries = 3);
+
+repeat :**plan_step**\nPlanner.plan(goal, contexto + feedback);
+  note right
+    Primera vez: start_episode (kind = plan).
+    Siguientes: kind = replan.
+  end note
+  if (¿falló la planificación?) then (sí)
+    :error = "Fallo al planificar";
+    break
+  endif
+
+  repeat :**execute_step**\nExecutor.execute_step(pasos[i]);
+    if (¿requires_approval?) then (sí)
+      :Crear ApprovalRequest\n(+ aviso por reply_to);
+      :final_output = "Ejecución pausada…";
+      break
+    endif
+    :**review_step**\nReviewer.review_step(task, expected, actual);
+    if (¿aprobado?) then (sí)
+      :i = i + 1;
+    else (no)
+      :retries = retries + 1;
+      if (¿retries ≥ max_retries?) then (sí)
+        :error = "máximo de reintentos";
+      else (no)
+        :feedback = corrección del Reviewer;
+      endif
+    endif
+  repeat while (¿sin error, sin feedback y quedan pasos?) is (continue)
+  ->replan o fin;
+repeat while (¿hay feedback? → replan) is (sí)
+->no;
+
+:close_episode(completed | failed | pending_approval);
+if (¿completed?) then (sí)
+  :Promover resultado a nodo **outcome**\n+ relaciones EVIDENCES;
+endif
+if (¿reply_to?) then (sí)
+  :Responder por el canal de origen\n(POST /comms/outbound);
+endif
+stop
+
+@enduml

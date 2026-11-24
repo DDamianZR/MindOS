@@ -1,5 +1,10 @@
+import asyncio
+import os
+from contextlib import asynccontextmanager, suppress
+from datetime import datetime
 from uuid import UUID
 
+import anthropic
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, status
 from mindos_common.context import set_correlation_id
@@ -12,26 +17,64 @@ from mindos_schemas.capabilities import (
     RegisterCapabilitiesResponse,
 )
 
+from agents.src.application.assistant.routines import RoutineRunner
+from agents.src.application.assistant.toolbox import AssistantToolbox
+from agents.src.application.ports.conversation_store import ConversationStorePort
+from agents.src.application.ports.personal_agent import PersonalAgentPort
+from agents.src.application.ports.routine_store import RoutineStorePort
 from agents.src.config import settings
 from agents.src.domain.executor.capability_executor import CapabilityExecutor
 from agents.src.domain.planner.agent_graph import AgentState, PlannerExecutorReviewerGraph
 from agents.src.domain.planner.llm_planner import LlmPlanner
 from agents.src.domain.planner.llm_reviewer import LlmReviewer
+from agents.src.infrastructure.adapters.anthropic_llm import AnthropicLlm
+from agents.src.infrastructure.adapters.claude_personal_agent import ClaudePersonalAgent
+from agents.src.infrastructure.adapters.demo_personal_agent import DemoPersonalAgent
+from agents.src.infrastructure.adapters.http_memory_gateway import HttpMemoryGateway
 from agents.src.infrastructure.adapters.http_reasoning_recorder import HttpReasoningRecorder
 from agents.src.infrastructure.adapters.in_memory_approval_store import InMemoryApprovalStore
 from agents.src.infrastructure.adapters.in_memory_capability_registry import (
     InMemoryCapabilityRegistry,
 )
+from agents.src.infrastructure.adapters.in_memory_conversation_store import (
+    InMemoryConversationStore,
+)
+from agents.src.infrastructure.adapters.in_memory_routine_store import InMemoryRoutineStore
 from agents.src.infrastructure.adapters.mock_llm import MockLlm
 from agents.src.infrastructure.adapters.ollama_llm import OllamaLlm
 
 configure_logging("AgentsService", settings.MINDOS_ENV)
 logger = get_logger("agents_main")
 
+# La tarea vive en el módulo para poder cancelarla al apagar y para que los tests vean si arrancó.
+_routines_task: asyncio.Task[None] | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Arranca el planificador de rutinas y lo cancela al apagar, sin dejar la tarea colgada."""
+    global _routines_task
+    _routines_task = None
+    if settings.ROUTINES_ENABLED:
+        _routines_task = asyncio.create_task(_routines_scheduler_loop(), name="mindos-routines")
+        logger.info("Planificador de rutinas iniciado", every_seconds=settings.ROUTINES_TICK_SECONDS)
+    try:
+        yield
+    finally:
+        task = _routines_task
+        _routines_task = None
+        if task is not None:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+            logger.info("Planificador de rutinas detenido")
+
+
 app = FastAPI(
     title="MindOS Agents Service",
     description="Motor de Orquestación y Grafos de Decisión Cognitivos de MindOS",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Registro de capacidades global en memoria del servicio
@@ -39,12 +82,120 @@ capability_registry = InMemoryCapabilityRegistry()
 # Aprobaciones pendientes (F1-T8/F3-T1/F3-T7), resueltas vía Gateway.
 approval_store = InMemoryApprovalStore()
 
+# Conversaciones del asistente personal (F7-T3).
+conversation_store = InMemoryConversationStore()
+
+# Rutinas programadas (Fase 8), en memoria como las conversaciones.
+routine_store = InMemoryRoutineStore()
+
+_anthropic_client: anthropic.AsyncAnthropic | None = None
+_assistant_http_client: httpx.AsyncClient | None = None
+
+
+def resolve_llm_provider() -> str:
+    """
+    Proveedor de razonamiento efectivo (F7-T1). Con `LLM_PROVIDER=auto` (default) se usa Claude
+    en cuanto hay una credencial; sin ella se conserva el comportamiento previo a la Fase 7
+    (Ollama en producción, Mock en desarrollo), así que nada cambia para quien no la configure.
+    """
+    provider = settings.LLM_PROVIDER.strip().lower()
+    if provider != "auto":
+        return provider
+    if settings.ANTHROPIC_API_KEY or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+        return "anthropic"
+    return "ollama" if settings.MINDOS_ENV == "production" else "mock"
+
+
+def get_anthropic_client() -> anthropic.AsyncAnthropic:
+    """Cliente único de la API de Claude (reutiliza conexiones entre peticiones). Con
+    `api_key=None` el SDK resuelve la credencial por su cuenta desde el entorno."""
+    global _anthropic_client
+    if _anthropic_client is None:
+        _anthropic_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY or None)
+    return _anthropic_client
+
+
 def get_llm_port():
-    """Inyecta el LLM configurado (Ollama local o Mock)."""
-    # Si la variable de entorno nos dice que usemos Ollama real
-    if settings.MINDOS_ENV == "production":
+    """Inyecta el LLM configurado para Planner/Reviewer (Claude, Ollama local o Mock)."""
+    provider = resolve_llm_provider()
+    if provider == "anthropic":
+        return AnthropicLlm(
+            get_anthropic_client(), model=settings.ANTHROPIC_MODEL, effort=settings.ANTHROPIC_EFFORT,
+            fallbacks_enabled=settings.ANTHROPIC_FALLBACKS,
+        )
+    if provider == "ollama":
         return OllamaLlm(model_name=settings.OLLAMA_MODEL, base_url=settings.OLLAMA_URL)
     return MockLlm()
+
+
+def get_assistant_http_client() -> httpx.AsyncClient:
+    """
+    Cliente HTTP de larga vida para las herramientas del asistente. No se usa el de
+    `get_http_client` (que se cierra al terminar la petición) porque la respuesta del asistente
+    es un stream: las herramientas se ejecutan mientras el stream sigue abierto, después de que
+    la función de la ruta ya devolvió.
+    """
+    global _assistant_http_client
+    if _assistant_http_client is None:
+        _assistant_http_client = httpx.AsyncClient(timeout=30.0)
+    return _assistant_http_client
+
+
+def get_conversation_store() -> ConversationStorePort:
+    return conversation_store
+
+
+def get_routine_store() -> RoutineStorePort:
+    return routine_store
+
+
+def get_personal_agent(
+    http_client: httpx.AsyncClient = Depends(get_assistant_http_client),
+) -> PersonalAgentPort:
+    """
+    Inyecta el asistente personal (F7-T3): Claude si el proveedor efectivo es `anthropic`; si
+    no, el asistente de demostración. Ollama no entra aquí: el asistente depende del uso de
+    herramientas y del streaming de la API de Claude.
+    """
+    toolbox = AssistantToolbox(
+        HttpMemoryGateway(settings.MEMORY_URL, http_client),
+        author=settings.MINDOS_OWNER_NAME,
+        routine_store=get_routine_store(),
+    )
+    if resolve_llm_provider() == "anthropic":
+        return ClaudePersonalAgent(
+            get_anthropic_client(), toolbox, model=settings.ANTHROPIC_MODEL,
+            effort=settings.ASSISTANT_EFFORT, max_tokens=settings.ASSISTANT_MAX_TOKENS,
+            max_tool_rounds=settings.ASSISTANT_MAX_TOOL_ROUNDS,
+            fallbacks_enabled=settings.ANTHROPIC_FALLBACKS, owner_name=settings.MINDOS_OWNER_NAME,
+            web_tools_enabled=settings.ASSISTANT_WEB_TOOLS,
+        )
+    return DemoPersonalAgent(toolbox)
+
+
+async def _routines_scheduler_loop() -> None:
+    # El primer tic espera: al apagar, cancelar corta el sueño y el proceso no se queda colgado.
+    while True:
+        await asyncio.sleep(settings.ROUTINES_TICK_SECONDS)
+        try:
+            await _execute_due_routines()
+        except Exception as exc:
+            logger.warning("No se pudieron revisar las rutinas programadas", error=str(exc))
+
+
+async def _execute_due_routines() -> None:
+    store = get_routine_store()
+    due = await store.list_due(datetime.now().astimezone())
+    if not due:
+        return
+    runner = RoutineRunner(
+        store, get_conversation_store(), get_personal_agent(get_assistant_http_client()),
+    )
+    for routine in due:
+        try:
+            await runner.run(routine.id)
+        except Exception as exc:
+            logger.warning("Falló una rutina programada", routine_id=routine.id, error=str(exc))
 
 
 async def get_http_client():
@@ -326,5 +477,13 @@ async def _record_outcome_as_knowledge(
 from agents.src.api.approvals_router import router as approvals_router  # noqa: E402
 
 app.include_router(approvals_router)
+
+from agents.src.api.assistant_router import router as assistant_router  # noqa: E402
+
+app.include_router(assistant_router)
+
+from agents.src.api.routines_router import router as routines_router  # noqa: E402
+
+app.include_router(routines_router)
 
 # Fin del módulo main

@@ -1,0 +1,87 @@
+@startuml
+!include ../_tema.iuml
+title Secuencia — Captura por WhatsApp hasta el Knowledge Graph
+
+autonumber "<b>[00]"
+skinparam responseMessageBelowArrow true
+
+actor "Dueño" as owner
+participant "WhatsApp" as wa
+participant "WhatsApp Bridge\n(Baileys)" as bridge
+participant "Comms Service" as comms
+queue "Redis Streams\nmindos.comms" as bus
+box "Memory Service" #F1F5F9
+  participant "IngestionPipelineService" as pipeline
+  participant "Storage · OCR · STT" as media
+  participant "API de memoria\n(loopback ASGI)" as api
+  database "PostgreSQL\n+ pgvector" as db
+end box
+participant "Ollama" as ollama
+participant "Agents Service" as agents
+
+owner -> wa : envía nota / foto / audio / PDF
+wa -> bridge : mensaje entrante (WebSocket)
+activate bridge
+bridge -> bridge : toInboundPayload()
+opt el mensaje trae un medio
+  bridge -> wa : downloadMediaMessage()
+  wa --> bridge : bytes
+  bridge -> bridge : metadata.media_base64 = base64(bytes)
+end
+bridge -> comms : POST /api/v1/comms/inbound\n{provider: "whatsapp", sender_id, text, metadata}
+activate comms
+comms -> bus : XADD com.mindos.communication.message.received\n(CloudEvent + correlation_id)
+comms --> bridge : 201 {status: "received", message_id}
+deactivate comms
+deactivate bridge
+
+== Consumo asíncrono (grupo memory-ingestion-pipeline) ==
+
+bus -> pipeline : XREADGROUP → handle_event(event)
+activate pipeline
+pipeline -> pipeline : MessageReceivedEventData.model_validate_json()
+
+opt hay media_base64 (imagen, PDF o audio)
+  pipeline -> media : storage.save(message_id, bytes)
+  media --> pipeline : source_uri
+  alt imagen o PDF
+    pipeline -> media : ocr.extract_text(bytes, mime)
+  else audio
+    pipeline -> media : stt.transcribe(bytes, mime)
+  end
+  media --> pipeline : texto extraído
+end
+
+pipeline -> api : POST /api/v1/memory/ingest\n{object_type: note, content, source{kind, uri, raw_ref}}
+activate api
+api -> ollama : embed_query(content)
+ollama --> api : vector[768]
+api -> db : dedup: vecino más cercano ≥ umbral
+api -> db : save_node · save_source · save_node_version\nupsert embedding · save_event_log  (COMMIT)
+api -> bus : XADD mindos.memory\nknowledge.created | knowledge.updated
+api --> pipeline : 201 {node_id, version, duplicate_of}
+deactivate api
+
+group Auto-enlazado (paso 4)
+  pipeline -> api : POST /api/v1/memory/search?query=…&limit=4
+  api --> pipeline : candidatos {node_id, content, score}
+  loop cada candidato con score ≥ umbral (0.65)
+    pipeline -> ollama : generate(¿relación genuina? → JSON)
+    ollama --> pipeline : {related, relation_type}
+    opt related y relation_type ∈ catálogo de auto-enlazado
+      pipeline -> api : POST /api/v1/memory/relation
+    end
+  end
+end
+
+group ¿Es una pregunta? (paso 6)
+  pipeline -> ollama : generate(¿es pregunta? → JSON)
+  ollama --> pipeline : {is_question}
+  opt is_question
+    pipeline -> agents : POST /api/v1/agents/execute\n?goal=…&reply_to_provider=whatsapp&reply_to_sender_id=…
+    note right of agents : ver «secuencia-ejecucion-agente»
+  end
+end
+deactivate pipeline
+
+@enduml

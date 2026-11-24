@@ -11,11 +11,11 @@ export default function Home() {
 
   useEffect(() => {
     if (isLoading) return;
-    router.replace(isAuthenticated ? "/search" : "/login");
+    router.replace(isAuthenticated ? "/inicio" : "/login");
   }, [isLoading, isAuthenticated, router]);
 
   return (
-    <div className="flex flex-1 items-center justify-center text-sm text-zinc-500 dark:text-zinc-400">
+    <div className="flex flex-1 items-center justify-center text-sm text-slate">
       Cargando MindOS…
     </div>
   );

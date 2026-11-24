@@ -3,8 +3,12 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
 
-import { Sidebar } from "@/components/Sidebar";
+import { TopNav } from "@/components/TopNav";
 import { useAuth } from "@/lib/auth";
+
+// Vistas que gestionan su propio ancho y alto: el Asistente (alto completo, scroll propio) y el
+// Inicio (secciones a todo el ancho, incluida la banda oscura).
+const FULL_BLEED_ROUTES = ["/assistant", "/inicio"];
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -15,7 +19,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isLoading || isAuthenticated) return;
     // Conserva a dónde iba (incluida la query -- p.ej. ?shared=1 del share_target de la PWA,
-    // F4-T3) para volver ahí mismo después de loguearse, en vez de perderlo en /search.
+    // F4-T3) para volver ahí mismo después de loguearse.
     const query = searchParams.toString();
     const from = encodeURIComponent(query ? `${pathname}?${query}` : pathname);
     router.replace(`/login?from=${from}`);
@@ -23,17 +27,24 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [isLoading, isAuthenticated, router]);
 
   if (isLoading || !isAuthenticated) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-sm text-zinc-500 dark:text-zinc-400">
-        Cargando…
-      </div>
-    );
+    return <div className="flex flex-1 items-center justify-center font-mono text-mono text-slate">Cargando…</div>;
   }
 
+  const fullBleed = FULL_BLEED_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+  const isAssistant = pathname.startsWith("/assistant");
+
   return (
-    <div className="flex flex-1">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto p-6">{children}</main>
+    <div className={`flex flex-1 flex-col ${isAssistant ? "h-full min-h-0" : ""}`}>
+      <TopNav />
+      <main
+        className={
+          fullBleed
+            ? `flex min-h-0 flex-1 flex-col ${isAssistant ? "" : ""}`
+            : "mx-auto w-full max-w-[1200px] flex-1 px-5 pt-10 pb-20"
+        }
+      >
+        {children}
+      </main>
     </div>
   );
 }

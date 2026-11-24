@@ -1,26 +1,388 @@
 @import "tailwindcss";
 
+/*
+ * Sistema visual de MindOS — "consola de investigación sobre papel":
+ * tinta negra sobre blanco, casi sin cromo, tarjetas pastel que etiquetan categorías y una sola
+ * banda oscura (#010120) por página. Jerarquía por peso y tamaño de letra, no por color.
+ * Esquinas de 4 px en todo. La única sombra es la de la barra de navegación fija.
+ *
+ * Código de color fijo para las tarjetas pastel (cada pastel significa siempre lo mismo):
+ *   sky   = memoria        blush = pensamiento
+ *   peach = agente         mint  = actividad
+ * El periwinkle (#bdbbff) solo aparece como puntuación: subrayados, marcas de activo, guiones.
+ */
+
+/* Modo oscuro desactivado a propósito: el sistema es de tema claro con una banda oscura. Las
+   vistas antiguas traen clases `dark:`; con esta variante nunca se activan. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --color-obsidian: #000000;
+  --color-paper-white: #ffffff;
+  --color-slate: #4d4d4d;
+  --color-hairline: #d6d6d6;
+  --color-midnight-ink: #010120;
+  --color-periwinkle: #bdbbff;
+  --color-mint-cyan: #c8f6f9;
+  --color-sky: #c1dff9;
+  --color-blush: #fde3f6;
+  --color-peach: #ffdccd;
+
+  /* Derivados (no están en la referencia, hacen falta en una app): */
+  --color-muted: #6b6b6b; /* metadatos de bajo énfasis; 5.3:1 sobre blanco */
+  --color-wash: #f5f5f5; /* fondo de hover y filas alternas */
+  --color-midnight-card: #0d0d33; /* tarjeta sobre la banda oscura */
+  --color-midnight-line: rgb(255 255 255 / 0.14);
+  --color-danger: #b42318;
+  --color-success: #067647;
+
+  --shadow-nav: rgba(1, 1, 32, 0.1) -10px 0px 75px 0px;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Tokens de la referencia */
+  --color-obsidian: var(--color-obsidian);
+  --color-paper: var(--color-paper-white);
+  --color-slate: var(--color-slate);
+  --color-hairline: var(--color-hairline);
+  --color-midnight: var(--color-midnight-ink);
+  --color-midnight-card: var(--color-midnight-card);
+  --color-midnight-line: var(--color-midnight-line);
+  --color-periwinkle: var(--color-periwinkle);
+  --color-mint: var(--color-mint-cyan);
+  --color-sky: var(--color-sky);
+  --color-blush: var(--color-blush);
+  --color-peach: var(--color-peach);
+  --color-muted: var(--color-muted);
+  --color-wash: var(--color-wash);
+  --color-danger: var(--color-danger);
+  --color-success: var(--color-success);
+
+  /* Alias semánticos que ya usan la vista Asistente y los componentes de la Fase 7 */
+  --color-surface: var(--color-paper-white);
+  --color-ink: var(--color-obsidian);
+  --color-ink-soft: var(--color-slate);
+  --color-ink-faint: var(--color-muted);
+  --color-rule: var(--color-hairline);
+  --color-rule-strong: #a8a8a8;
+  --color-accent: var(--color-obsidian);
+  --color-accent-ink: var(--color-paper-white);
+  --color-mark: var(--color-periwinkle);
+  --color-mark-ink: var(--color-obsidian);
+
+  --font-sans: var(--font-inter-tight), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Una sola familia de texto: `font-serif` heredado apunta a la sans. */
+  --font-serif: var(--font-inter-tight), ui-sans-serif, system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@theme {
+  /* Escala tipográfica de la referencia: `text-display`, `text-heading`, ... */
+  --text-caption: 14px;
+  --text-caption--line-height: 1.25;
+  --text-caption--letter-spacing: -0.14px;
+  --text-body-sm: 16px;
+  --text-body-sm--line-height: 1.3;
+  --text-body-sm--letter-spacing: -0.16px;
+  --text-body: 18px;
+  --text-body--line-height: 1.3;
+  --text-body--letter-spacing: -0.18px;
+  --text-subheading: 22px;
+  --text-subheading--line-height: 1.25;
+  --text-subheading--letter-spacing: -0.22px;
+  --text-heading-sm: 28px;
+  --text-heading-sm--line-height: 1.2;
+  --text-heading-sm--letter-spacing: -0.42px;
+  --text-heading: 40px;
+  --text-heading--line-height: 1.15;
+  --text-heading--letter-spacing: -0.8px;
+  --text-display: 64px;
+  --text-display--line-height: 1.1;
+  --text-display--letter-spacing: -1.92px;
+  /* Mono: etiquetas, insignias, botones */
+  --text-mono-xs: 10px;
+  --text-mono-xs--line-height: 1.2;
+  --text-mono-xs--letter-spacing: 0.07px;
+  --text-mono-sm: 11px;
+  --text-mono-sm--line-height: 1.3;
+  --text-mono-sm--letter-spacing: 0.08px;
+  --text-mono: 13px;
+  --text-mono--line-height: 1.3;
+  --text-mono--letter-spacing: 0.09px;
+
+  /* Esquinas: 4 px en todo lo estándar (las vistas antiguas con rounded-lg/xl/2xl lo heredan). */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+  --radius-3xl: 4px;
+
+  /* Sin sombras en tarjetas ni botones: el sistema es plano. */
+  --shadow-xs: 0 0 #0000;
+  --shadow-sm: 0 0 #0000;
+  --shadow-md: 0 0 #0000;
+  --shadow-lg: 0 0 #0000;
+  --shadow-xl: 0 0 #0000;
+
+  /* La escala zinc de las vistas antiguas, en neutros puros de la referencia. */
+  --color-zinc-50: #fafafa;
+  --color-zinc-100: #f5f5f5;
+  --color-zinc-200: #e8e8e8;
+  --color-zinc-300: #d6d6d6;
+  --color-zinc-400: #8f8f8f;
+  --color-zinc-500: #6b6b6b;
+  --color-zinc-600: #4d4d4d;
+  --color-zinc-700: #333333;
+  --color-zinc-800: #1a1a1a;
+  --color-zinc-900: #000000;
+  --color-zinc-950: #000000;
+}
+
+@layer base {
+  html {
+    background: var(--color-paper-white);
+  }
+
+  body {
+    background: var(--color-paper-white);
+    color: var(--color-obsidian);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.4;
+    letter-spacing: -0.16px;
+  }
+
+  :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-obsidian);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--color-periwinkle);
+    color: var(--color-obsidian);
+  }
+
+  /* Títulos de las vistas que todavía no usan <PageHeader>. */
+  main h1 {
+    font-weight: 500;
+    font-size: 28px;
+    line-height: 1.2;
+    letter-spacing: -0.42px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Etiqueta mono: la voz de "cuaderno de laboratorio" para etiquetas, insignias y botones. */
+@utility mono-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 500;
+  letter-spacing: 0.08px;
+  text-transform: uppercase;
+}
+
+/*
+ * Respuesta del asistente: lectura larga en la misma sans, a 18 px.
+ */
+.answer {
+  font-size: 18px;
+  line-height: 1.5;
+  letter-spacing: -0.18px;
+  color: var(--color-obsidian);
+  overflow-wrap: anywhere;
+}
+
+.answer > :first-child {
+  margin-top: 0;
+}
+
+.answer > :last-child {
+  margin-bottom: 0;
+}
+
+.answer p,
+.answer ul,
+.answer ol,
+.answer blockquote,
+.answer pre,
+.answer table {
+  margin-block: 0.8em;
+}
+
+.answer h1,
+.answer h2,
+.answer h3,
+.answer h4 {
+  font-weight: 500;
+  line-height: 1.25;
+  margin-block: 1.4em 0.5em;
+}
+
+.answer h1,
+.answer h2 {
+  font-size: 22px;
+  letter-spacing: -0.22px;
+}
+
+.answer h3,
+.answer h4 {
+  font-size: 18px;
+}
+
+.answer ul {
+  list-style: disc;
+  padding-left: 1.25em;
+}
+
+.answer ol {
+  list-style: decimal;
+  padding-left: 1.4em;
+}
+
+.answer li {
+  margin-block: 0.3em;
+}
+
+.answer li::marker {
+  color: var(--color-muted);
+}
+
+.answer strong {
+  font-weight: 600;
+}
+
+.answer a {
+  color: var(--color-obsidian);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.answer blockquote {
+  border-left: 2px solid var(--color-periwinkle);
+  padding-left: 1em;
+  color: var(--color-slate);
+}
+
+.answer code {
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  background: var(--color-wash);
+  border: 1px solid var(--color-hairline);
+  border-radius: 4px;
+  padding: 0.05em 0.35em;
+}
+
+.answer pre {
+  background: var(--color-wash);
+  border: 1px solid var(--color-hairline);
+  border-radius: 4px;
+  padding: 0.9em 1em;
+  overflow-x: auto;
+  line-height: 1.55;
+}
+
+.answer pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 13px;
+}
+
+.answer table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.answer th,
+.answer td {
+  border-bottom: 1px solid var(--color-hairline);
+  padding: 0.45em 0.9em 0.45em 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.answer th {
+  font-weight: 500;
+  border-bottom-color: var(--color-obsidian);
+}
+
+.answer hr {
+  border: 0;
+  border-top: 1px solid var(--color-hairline);
+  margin-block: 1.5em;
+}
+
+/*
+ * Cita tomada de la memoria («…»): subrayado periwinkle grueso. Es el único uso de ese color
+ * dentro de una respuesta, así que siempre significa "esto viene de lo que guardaste".
+ */
+.answer .cite {
+  color: var(--color-obsidian);
+  text-decoration: underline;
+  text-decoration-color: var(--color-periwinkle);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 3px;
+  text-decoration-skip-ink: none;
+}
+
+.answer a.cite:hover {
+  text-decoration-color: var(--color-obsidian);
+}
+
+/* Cursor de escritura mientras llega la respuesta. */
+.answer-caret::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1.05em;
+  margin-left: 0.12em;
+  vertical-align: -0.18em;
+  background: var(--color-obsidian);
+  animation: caret-blink 1s steps(2, start) infinite;
+}
+
+@keyframes caret-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+/* Estado en curso ("Buscando en tu memoria"): tres puntos que avanzan. */
+.status-dots::after {
+  content: "";
+  display: inline-block;
+  width: 1.2em;
+  text-align: left;
+  animation: status-dots 1.4s steps(4, end) infinite;
+}
+
+@keyframes status-dots {
+  0% {
+    content: "";
+  }
+  25% {
+    content: ".";
+  }
+  50% {
+    content: "..";
+  }
+  75% {
+    content: "...";
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .answer-caret::after {
+    animation: none;
+  }
+
+  .status-dots::after {
+    animation: none;
+    content: "...";
+  }
 }

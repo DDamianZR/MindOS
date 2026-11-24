@@ -1,0 +1,67 @@
+@startuml
+!include ../_tema.iuml
+title MindOS — Diagrama de componentes (UML)
+
+skinparam componentStyle uml2
+skinparam nodesep 50
+skinparam ranksep 60
+
+actor "Dueño" as owner
+actor "Asistente de IA\n(cliente MCP)" as assistant
+cloud "WhatsApp" as whatsapp
+
+component "Dashboard + PWA\n<<Next.js · Cytoscape.js>>" as dashboard
+component "CLI de captura\n<<python -m comms.src.cli>>" as cli
+component "Traefik\n<<reverse proxy · TLS>>" as traefik
+
+rectangle "Red interna mindos-net" {
+  component "Gateway\n<<FastAPI>>\n----\n/api/v1/auth/login\n/api/v1/{servicio}/…\nJWT · API key · rate-limit\ncorrelation-id" as gateway
+  component "MCP Server\n<<Python MCP SDK>>\n----\nmindos_search · mindos_ingest\nmindos_context · mindos_explain\nmindos_ask_cognitive" as mcp
+  component "Agents Service\n<<FastAPI · LangGraph>>\n----\n/api/v1/agents/execute\n/api/v1/approvals\n/api/v1/capabilities/register" as agents
+  component "Memory Service\n<<FastAPI · SQLAlchemy>>\n----\n/api/v1/memory\n/api/v1/thinking\n/api/v1/cognitive\n+ pipeline de ingestión" as memory
+  component "Comms Service\n<<FastAPI>>\n----\n/api/v1/comms/inbound\n/api/v1/comms/outbound" as comms
+  component "WhatsApp Bridge\n<<Node.js · Baileys · Express>>\n----\nPOST /send" as wa_bridge
+}
+
+queue "Redis Streams\n----\nmindos.comms\nmindos.comms.outbound\nmindos.memory" as redis
+database "PostgreSQL 16\n+ pgvector" as postgres
+folder "Blobs\n(FS local / MinIO)" as blobs
+node "Ollama\n(host / workstation)" as ollama
+
+' ── Entrada ──
+owner --> dashboard
+owner --> cli
+owner --> whatsapp
+assistant --> mcp : stdio (local)
+dashboard --> traefik : HTTPS · JWT
+cli --> traefik : HTTPS · X-Api-Key
+traefik --> gateway
+
+' ── Proxy autenticado del Gateway ──
+gateway --> memory : memory · thinking\n· cognitive
+gateway --> agents : agents · approvals
+gateway --> comms : comms
+gateway --> mcp : mcp\n(streamable-http)
+mcp ..> gateway : X-Api-Key\n(nunca directo\na los servicios)
+
+' ── WhatsApp ──
+whatsapp <--> wa_bridge : Baileys
+wa_bridge --> comms : POST /inbound
+comms --> wa_bridge : POST /send
+
+' ── Servicio a servicio ──
+memory --> agents : registra capacidades ·\ndispara agente si la\ncaptura es pregunta
+agents --> memory : contexto GraphRAG · capacidades ·\ntraza de razonamiento · outcome
+agents --> comms : outbound\n(reply_to)
+
+' ── Eventos, persistencia y modelos ──
+comms --> redis : XADD
+redis --> memory : XREADGROUP\n(memory-ingestion-pipeline)
+memory --> redis : XADD
+gateway --> redis : rate-limit
+memory --> postgres : SQL (asyncpg)
+memory --> blobs : StoragePort
+memory --> ollama : EmbeddingPort\nLlmPort
+agents --> ollama : LlmPort
+
+@enduml

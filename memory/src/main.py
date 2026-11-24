@@ -875,9 +875,11 @@ async def scan_contradictions(
 # para evitar ciclos: estos routers importan `get_repositories`/`get_thinking_graph_repo`
 # desde este mismo módulo.
 from memory.src.api.cognitive_router import router as cognitive_router  # noqa: E402
+from memory.src.api.stats_router import router as stats_router  # noqa: E402
 from memory.src.api.thinking_router import router as thinking_router  # noqa: E402
 
 app.include_router(thinking_router)
 app.include_router(cognitive_router)
+app.include_router(stats_router)
 
 # Fin del módulo main

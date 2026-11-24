@@ -22,7 +22,7 @@ import type {
   TimeTravelResponse,
 } from "./types";
 
-const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8000";
+export const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8000";
 
 export class ApiError extends Error {
   constructor(
@@ -41,7 +41,12 @@ export function setAuthToken(token: string | null) {
   authToken = token;
 }
 
-async function request<T>(
+/** Para clientes que no pueden pasar por `request()` (el stream del asistente, F7-T6). */
+export function getAuthToken(): string | null {
+  return authToken;
+}
+
+export async function request<T>(
   path: string,
   options: { method?: string; params?: Record<string, string | number | boolean | undefined>; body?: unknown } = {},
 ): Promise<T> {

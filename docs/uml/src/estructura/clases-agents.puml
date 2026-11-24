@@ -1,0 +1,159 @@
+@startuml
+!include ../_tema.iuml
+title Agents Service — Planner → Executor → Reviewer (LangGraph)
+
+hide empty members
+skinparam nodesep 35
+skinparam ranksep 55
+
+package "domain.planner" <<Rectangle>> {
+  class PlannerExecutorReviewerGraph {
+    + graph : CompiledStateGraph
+    - _plan_node(state) : dict
+    - _execute_node(state) : dict
+    - _review_node(state) : dict
+    - _after_execute(state) : "review" | "end"
+    - _should_continue(state) : "continue" | "replan" | "end"
+    - _retry_or_giveup(state, reason) : dict
+  }
+
+  class AgentState <<TypedDict>> {
+    goal : str
+    context : str
+    plan_id : UUID [0..1]
+    steps : PlanStep [*]
+    current_step_idx : int
+    available_capabilities : Capability [*]
+    inputs : dict
+    feedback : str [0..1]
+    error : str [0..1]
+    final_output : str [0..1]
+    retries / max_retries : int
+    correlation_id : UUID
+    context_node_ids : UUID [*]
+    reasoning_step_counter : int
+    reply_to : dict [0..1]
+  }
+
+  abstract class Planner {
+    + {abstract} plan(goal, context, capabilities) : GeneratePlanResponse
+  }
+  abstract class Reviewer {
+    + {abstract} review_step(task, expected, actual) : ReviewStepResponse
+  }
+  class LlmPlanner
+  class LlmReviewer
+}
+
+package "domain.executor" <<Rectangle>> {
+  abstract class Executor {
+    + {abstract} execute_step(step, inputs, episode_id, reply_to) : ExecutionResult
+  }
+  class CapabilityExecutor {
+    + execute_step(...) : ExecutionResult
+    + execute_capability_by_name(name, inputs) : ExecutionResult
+    + register_mock_handler(name, handler)
+    - _dispatch(cap, inputs) : ExecutionResult
+    - _notify_approval_needed(approval_id, cap, reply_to)
+  }
+  class ExecutionResult <<dataclass>> {
+    output : str
+    status : "completed" | "failed" | "pending_approval"
+  }
+}
+
+package "application.ports" <<Rectangle>> {
+  interface LlmPort {
+    + generate(prompt, json_mode) : str
+    + chat(messages) : str
+  }
+  interface ReasoningRecorderPort {
+    + start_episode(episode_id, goal, correlation_id, agent)
+    + record_step(...)
+    + close_episode(episode_id, status, final_output)
+  }
+  interface ApprovalPort {
+    + create(...) / get(id)
+    + list_pending()
+    + resolve(id, status, result_output)
+  }
+  interface CapabilityRegistryPort {
+    + register(capabilities) : bool
+    + get_all() : Capability [*]
+    + get_by_name(name) : Capability [0..1]
+  }
+}
+
+package "infrastructure.adapters" <<Rectangle>> {
+  class OllamaLlm
+  class MockLlm
+  class HttpReasoningRecorder
+  class NoOpReasoningRecorder
+  class InMemoryApprovalStore
+  class InMemoryCapabilityRegistry
+}
+
+package "mindos_schemas" <<Rectangle>> {
+  class Capability <<DTO>> {
+    name : str
+    description : str
+    parameters_schema : dict
+    provider_service : str
+    endpoint_path : str
+    requires_approval : bool
+  }
+  class PlanStep <<DTO>> {
+    step_id : int
+    task : str
+    capability_name : str [0..1]
+    expected_output : str
+    status : str
+    actual_output : str [0..1]
+  }
+  class GeneratePlanResponse <<DTO>> {
+    plan_id : UUID
+    goal : str
+    steps : PlanStep [*]
+  }
+  class ReviewStepResponse <<DTO>> {
+    approved : bool
+    feedback : str [0..1]
+  }
+}
+
+PlannerExecutorReviewerGraph o-- Planner
+PlannerExecutorReviewerGraph o-- Executor
+PlannerExecutorReviewerGraph o-- Reviewer
+PlannerExecutorReviewerGraph o-- ReasoningRecorderPort : recorder
+PlannerExecutorReviewerGraph ..> AgentState : transforma
+
+Planner <|-- LlmPlanner
+Reviewer <|-- LlmReviewer
+Executor <|-- CapabilityExecutor
+LlmPlanner --> LlmPort
+LlmReviewer --> LlmPort
+CapabilityExecutor --> CapabilityRegistryPort
+CapabilityExecutor --> ApprovalPort
+CapabilityExecutor ..> ExecutionResult : «create»
+
+LlmPort <|.. OllamaLlm
+LlmPort <|.. MockLlm
+ReasoningRecorderPort <|.. HttpReasoningRecorder
+ReasoningRecorderPort <|.. NoOpReasoningRecorder
+ApprovalPort <|.. InMemoryApprovalStore
+CapabilityRegistryPort <|.. InMemoryCapabilityRegistry
+
+GeneratePlanResponse *-- "1..*" PlanStep
+Planner ..> GeneratePlanResponse
+Reviewer ..> ReviewStepResponse
+CapabilityRegistryPort ..> Capability
+AgentState o-- PlanStep
+AgentState o-- Capability
+
+note bottom of HttpReasoningRecorder
+  Persiste episodio y pasos en el
+  Thinking Graph del Memory Service
+  (POST /api/v1/thinking/episodes…).
+end note
+
+@enduml

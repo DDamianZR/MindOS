@@ -170,3 +170,28 @@ class DatabasePort(ABC):
     async def save_event_log(self, event_id: UUID, event_type: str, payload: dict[str, Any]) -> None:
         """Registra un evento de forma inmutable para auditoría y Event Sourcing híbrido."""
         pass
+
+    @abstractmethod
+    async def get_stats_snapshot(self) -> dict[str, Any]:
+        """
+        Agregados crudos para `GET /api/v1/memory/stats`. No arma el DTO ni rellena ceros:
+        el servicio ordena, completa los 30 días y recorta el pensamiento reciente.
+
+        Claves:
+        - `nodes` (int): nodos cuya versión de mayor número no tiene `tombstoned_at`.
+        - `archived_nodes` (int): nodos cuya versión de mayor número sí está tombstoneada.
+        - `versions` (int): total de versiones, archivadas o no.
+        - `relations` (int): relaciones activas (`valid_to` nulo: las que `delete_relation` no cerró).
+        - `sources` (int): fuentes de origen registradas.
+        - `contradictions` (int): relaciones activas cuyo tipo es `CONTRADICTS`.
+        - `by_type`: `[{"key": object_type, "count": int}]` de la versión vigente de los nodos no archivados.
+        - `by_source`: `[{"key": kind, "count": int}]` de las fuentes, agrupadas por `kind`.
+        - `by_relation`: `[{"key": relation_type, "count": int}]` de las relaciones activas.
+        - `activity`: `[{"date": datetime.date, "created": int, "updated": int}]` por día UTC con
+          movimiento. `created` = versiones con `version == 1`; `updated` = versiones con `version > 1`.
+          Los días en cero pueden omitirse.
+        - `recent_thinking`: `[{"node_id", "title", "object_type", "version", "created_at"}]` de la
+          versión vigente de nodos no archivados. Puede incluir otros tipos y más de 8 filas: el
+          servicio se queda con decision/insight/learning/hypothesis y recorta a 8.
+        """
+        pass

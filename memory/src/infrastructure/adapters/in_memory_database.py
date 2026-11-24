@@ -1,8 +1,11 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 from uuid import UUID
 
 from memory.src.application.ports.database import DatabasePort
+
+# Mismos tipos que recorta StatsService. Filtrar aquí evita recorrer notas en el recuento reciente.
+_THINKING_TYPES = frozenset({"decision", "insight", "learning", "hypothesis"})
 
 
 class InMemoryDatabase(DatabasePort):
@@ -235,3 +238,66 @@ class InMemoryDatabase(DatabasePort):
 
     async def get_source(self, source_id: UUID) -> dict[str, Any] | None:
         return self._sources.get(source_id)
+
+    async def get_stats_snapshot(self) -> dict[str, Any]:
+        activity: dict[date, dict[str, int]] = {}
+        latest: list[dict[str, Any]] = []
+        versions = 0
+        for node_versions in self._versions.values():
+            if not node_versions:
+                continue
+            versions += len(node_versions)
+            # La de mayor número es la vigente: si esa está tombstoneada, el nodo está archivado.
+            latest.append(node_versions[-1])
+            for ver in node_versions:
+                _accumulate_activity(activity, ver["version"], ver["created_at"])
+
+        active = [ver for ver in latest if ver.get("tombstoned_at") is None]
+        active_relations = [rel for rel in self._relations if rel["valid_to"] is None]
+        return {
+            "nodes": len(active),
+            "archived_nodes": len(latest) - len(active),
+            "versions": versions,
+            "relations": len(active_relations),
+            "sources": len(self._sources),
+            "contradictions": sum(1 for rel in active_relations if rel["relation_type"] == "CONTRADICTS"),
+            "by_type": _tally(ver["object_type"] for ver in active if ver.get("object_type")),
+            "by_source": _tally(src["kind"] for src in self._sources.values()),
+            "by_relation": _tally(rel["relation_type"] for rel in active_relations),
+            "activity": [
+                {"date": day, "created": counts["created"], "updated": counts["updated"]}
+                for day, counts in activity.items()
+            ],
+            "recent_thinking": [
+                {
+                    "node_id": ver["node_id"],
+                    "title": ver["title"],
+                    "object_type": ver.get("object_type"),
+                    "version": ver["version"],
+                    "created_at": ver["created_at"],
+                }
+                for ver in active
+                if ver.get("object_type") in _THINKING_TYPES
+            ],
+        }
+
+
+def _utc_day(value: datetime) -> date:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).date()
+
+
+def _accumulate_activity(activity: dict[date, dict[str, int]], version: int, created_at: datetime) -> None:
+    bucket = activity.setdefault(_utc_day(created_at), {"created": 0, "updated": 0})
+    if version == 1:
+        bucket["created"] += 1
+    elif version > 1:
+        bucket["updated"] += 1
+
+
+def _tally(values) -> list[dict[str, Any]]:
+    totals: dict[str, int] = {}
+    for value in values:
+        totals[value] = totals.get(value, 0) + 1
+    return [{"key": key, "count": count} for key, count in totals.items()]

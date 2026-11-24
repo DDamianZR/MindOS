@@ -1,0 +1,34 @@
+@startuml
+!include ../_tema.iuml
+title Máquina de estados — Ciclo de vida de un Objeto Cognitivo
+
+[*] --> Vigente : POST /memory/ingest (v1)\n/ knowledge.created
+
+state Vigente {
+  [*] --> active : por defecto
+  state draft
+  state hypothesis
+  state fact
+  state superseded
+  state "archived" as archived_status
+  hypothesis -[dashed]-> fact : lifecycle F5-T4\n(previsto)
+
+  note bottom of fact
+    ""status"" (ObjectStatus) se fija en cada versión:
+    una versión nueva puede traer cualquier estado
+    (hoy el código no restringe las transiciones).
+  end note
+}
+
+Vigente --> Vigente : nueva versión (vN+1, padre = vN)\n/ knowledge.updated
+Vigente --> Archivado : POST /node/{id}/archive\n/ tombstoned_at = now() · knowledge.archived
+Archivado --> Vigente : POST /node/{id}/restore\n/ tombstoned_at = null · knowledge.restored
+
+state Archivado : Oculto en búsqueda, contexto y dedup\n(include_archived = false por defecto),\npero consultable por historial y as-of.
+
+note right of Archivado
+  Nunca hay borrado físico: no existe
+  transición hacia un estado final.
+end note
+
+@enduml

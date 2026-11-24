@@ -1,0 +1,146 @@
+@startuml classes_agents
+!include ../../src/_tema.iuml
+title agents — clases (generado con pyreverse)
+set namespaceSeparator none
+class "AgentState" as agents.src.domain.planner.agent_graph.AgentState {
+  available_capabilities : list[Capability]
+  context : str
+  context_node_ids : list[UUID]
+  correlation_id : UUID
+  current_step_idx : int
+  error : str | None
+  feedback : str | None
+  final_output : str | None
+  goal : str
+  inputs : dict[str, Any]
+  max_retries : int
+  plan_id : UUID | None
+  reasoning_step_counter : int
+  reply_to : dict[str, str] | None
+  retries : int
+  steps : list[PlanStep]
+}
+class "ApprovalPort" as agents.src.application.ports.approval.ApprovalPort {
+  {abstract}create(approval_id: UUID, episode_id: UUID, step_id: int, capability_name: str, inputs: dict[str, Any], reply_to: dict[str, str] | None) -> dict[str, Any]
+  {abstract}get(approval_id: UUID) -> dict[str, Any] | None
+  {abstract}list_pending() -> list[dict[str, Any]]
+  {abstract}resolve(approval_id: UUID, status: str, result_output: str | None) -> dict[str, Any] | None
+}
+class "CapabilityExecutor" as agents.src.domain.executor.capability_executor.CapabilityExecutor {
+  approval_store
+  comms_url : NoneType
+  registry
+  close() -> None
+  execute_capability_by_name(capability_name: str, inputs: dict[str, Any]) -> ExecutionResult
+  execute_step(step: PlanStep, inputs: dict[str, Any], episode_id: UUID, reply_to: dict[str, str] | None) -> ExecutionResult
+  register_mock_handler(capability_name: str, handler_callable) -> None
+}
+class "CapabilityRegistryPort" as agents.src.application.registry.capability_registry_port.CapabilityRegistryPort {
+  {abstract}get_all() -> list[Capability]
+  {abstract}get_by_name(name: str) -> Capability | None
+  {abstract}register(capabilities: list[Capability]) -> bool
+}
+class "Config" as agents.src.config.Settings.Config {
+  env_file : str
+  env_file_encoding : str
+}
+class "ExecutionResult" as agents.src.domain.executor.executor.ExecutionResult {
+  output : str
+  status : str
+}
+class "Executor" as agents.src.domain.executor.executor.Executor {
+  {abstract}execute_step(step: PlanStep, inputs: dict[str, Any], episode_id: UUID, reply_to: dict[str, str] | None) -> ExecutionResult
+}
+class "HttpReasoningRecorder" as agents.src.infrastructure.adapters.http_reasoning_recorder.HttpReasoningRecorder {
+  base_url
+  close() -> None
+  close_episode(episode_id: UUID, status: str, final_output: str | None) -> None
+  record_step(episode_id: UUID, step_id: UUID, step_index: int, kind: str, input_text: str | None, output_text: str | None, capability_name: str | None, approved: bool | None, feedback: str | None, knowledge_refs: list[UUID] | None) -> None
+  start_episode(episode_id: UUID, goal: str, correlation_id: UUID, agent: str) -> None
+}
+class "InMemoryApprovalStore" as agents.src.infrastructure.adapters.in_memory_approval_store.InMemoryApprovalStore {
+  create(approval_id: UUID, episode_id: UUID, step_id: int, capability_name: str, inputs: dict[str, Any], reply_to: dict[str, str] | None) -> dict[str, Any]
+  get(approval_id: UUID) -> dict[str, Any] | None
+  list_pending() -> list[dict[str, Any]]
+  resolve(approval_id: UUID, status: str, result_output: str | None) -> dict[str, Any] | None
+}
+class "InMemoryCapabilityRegistry" as agents.src.infrastructure.adapters.in_memory_capability_registry.InMemoryCapabilityRegistry {
+  get_all() -> list[Capability]
+  get_by_name(name: str) -> Capability | None
+  register(capabilities: list[Capability]) -> bool
+}
+class "LlmPlanner" as agents.src.domain.planner.llm_planner.LlmPlanner {
+  llm
+  plan(goal: str, context: str, available_capabilities: list[Capability]) -> GeneratePlanResponse
+}
+class "LlmPort" as agents.src.application.ports.llm.LlmPort {
+  {abstract}chat(messages: list[dict[str, str]], json_mode: bool) -> str
+  {abstract}generate(prompt: str, system_instruction: str | None, json_mode: bool) -> str
+}
+class "LlmReviewer" as agents.src.domain.planner.llm_reviewer.LlmReviewer {
+  llm
+  review_step(task: str, expected_output: str, actual_output: str) -> ReviewStepResponse
+}
+class "MockLlm" as agents.src.infrastructure.adapters.mock_llm.MockLlm {
+  chat(messages: list[dict[str, str]], json_mode: bool) -> str
+  generate(prompt: str, system_instruction: str | None, json_mode: bool) -> str
+}
+class "NoOpReasoningRecorder" as agents.src.infrastructure.adapters.noop_reasoning_recorder.NoOpReasoningRecorder {
+  {abstract}close_episode(episode_id: UUID, status: str, final_output: str | None) -> None
+  {abstract}record_step(episode_id: UUID, step_id: UUID, step_index: int, kind: str, input_text: str | None, output_text: str | None, capability_name: str | None, approved: bool | None, feedback: str | None, knowledge_refs: list[UUID] | None) -> None
+  {abstract}start_episode(episode_id: UUID, goal: str, correlation_id: UUID, agent: str) -> None
+}
+class "OllamaLlm" as agents.src.infrastructure.adapters.ollama_llm.OllamaLlm {
+  base_url : str
+  client
+  model_name : str
+  chat(messages: list[dict[str, str]], json_mode: bool) -> str
+  close() -> None
+  generate(prompt: str, system_instruction: str | None, json_mode: bool) -> str
+}
+class "Planner" as agents.src.domain.planner.planner.Planner {
+  {abstract}plan(goal: str, context: str, available_capabilities: list[Capability]) -> GeneratePlanResponse
+}
+class "PlannerExecutorReviewerGraph" as agents.src.domain.planner.agent_graph.PlannerExecutorReviewerGraph {
+  executor
+  graph
+  planner
+  recorder
+  reviewer
+}
+class "ReasoningRecorderPort" as agents.src.application.ports.reasoning_recorder.ReasoningRecorderPort {
+  {abstract}close_episode(episode_id: UUID, status: str, final_output: str | None) -> None
+  {abstract}record_step(episode_id: UUID, step_id: UUID, step_index: int, kind: str, input_text: str | None, output_text: str | None, capability_name: str | None, approved: bool | None, feedback: str | None, knowledge_refs: list[UUID] | None) -> None
+  {abstract}start_episode(episode_id: UUID, goal: str, correlation_id: UUID, agent: str) -> None
+}
+class "Reviewer" as agents.src.domain.planner.reviewer.Reviewer {
+  {abstract}review_step(task: str, expected_output: str, actual_output: str) -> ReviewStepResponse
+}
+class "Settings" as agents.src.config.Settings {
+  COMMS_URL : str
+  MEMORY_URL : str
+  MINDOS_ENV : str
+  OLLAMA_MODEL : str
+  OLLAMA_URL : str
+  PORT : int
+  REDIS_URL : str
+  SERVICE_NAME : str
+}
+agents.src.domain.executor.capability_executor.CapabilityExecutor --|> agents.src.domain.executor.executor.Executor
+agents.src.domain.planner.llm_planner.LlmPlanner --|> agents.src.domain.planner.planner.Planner
+agents.src.domain.planner.llm_reviewer.LlmReviewer --|> agents.src.domain.planner.reviewer.Reviewer
+agents.src.infrastructure.adapters.http_reasoning_recorder.HttpReasoningRecorder --|> agents.src.application.ports.reasoning_recorder.ReasoningRecorderPort
+agents.src.infrastructure.adapters.in_memory_approval_store.InMemoryApprovalStore --|> agents.src.application.ports.approval.ApprovalPort
+agents.src.infrastructure.adapters.in_memory_capability_registry.InMemoryCapabilityRegistry --|> agents.src.application.registry.capability_registry_port.CapabilityRegistryPort
+agents.src.infrastructure.adapters.mock_llm.MockLlm --|> agents.src.application.ports.llm.LlmPort
+agents.src.infrastructure.adapters.noop_reasoning_recorder.NoOpReasoningRecorder --|> agents.src.application.ports.reasoning_recorder.ReasoningRecorderPort
+agents.src.infrastructure.adapters.ollama_llm.OllamaLlm --|> agents.src.application.ports.llm.LlmPort
+agents.src.domain.executor.capability_executor.CapabilityExecutor --> agents.src.infrastructure.adapters.in_memory_approval_store.InMemoryApprovalStore : approval_store
+agents.src.domain.planner.agent_graph.PlannerExecutorReviewerGraph --> agents.src.infrastructure.adapters.noop_reasoning_recorder.NoOpReasoningRecorder : recorder
+agents.src.application.ports.llm.LlmPort --o agents.src.domain.planner.llm_planner.LlmPlanner : llm
+agents.src.application.ports.llm.LlmPort --o agents.src.domain.planner.llm_reviewer.LlmReviewer : llm
+agents.src.application.registry.capability_registry_port.CapabilityRegistryPort --o agents.src.domain.executor.capability_executor.CapabilityExecutor : registry
+agents.src.domain.executor.executor.Executor --o agents.src.domain.planner.agent_graph.PlannerExecutorReviewerGraph : executor
+agents.src.domain.planner.planner.Planner --o agents.src.domain.planner.agent_graph.PlannerExecutorReviewerGraph : planner
+agents.src.domain.planner.reviewer.Reviewer --o agents.src.domain.planner.agent_graph.PlannerExecutorReviewerGraph : reviewer
+@enduml

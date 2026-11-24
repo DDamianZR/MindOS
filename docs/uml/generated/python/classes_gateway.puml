@@ -1,0 +1,50 @@
+@startuml classes_gateway
+!include ../../src/_tema.iuml
+title gateway — clases (generado con pyreverse)
+set namespaceSeparator none
+class "Config" as gateway.src.config.Settings.Config {
+  env_file : str
+  env_file_encoding : str
+}
+class "InMemoryRateLimiter" as gateway.src.infrastructure.adapters.in_memory_rate_limiter.InMemoryRateLimiter {
+  hit(key: str, limit: int, window_seconds: int) -> bool
+}
+class "LoginRequest" as gateway.src.main.LoginRequest {
+  password : str
+  username : str
+}
+class "LoginResponse" as gateway.src.main.LoginResponse {
+  access_token : str
+  expires_in_minutes : int
+  token_type : str
+}
+class "RateLimiterPort" as gateway.src.application.ports.rate_limiter.RateLimiterPort {
+  {abstract}hit(key: str, limit: int, window_seconds: int) -> bool
+}
+class "RedisRateLimiter" as gateway.src.infrastructure.adapters.redis_rate_limiter.RedisRateLimiter {
+  client
+  hit(key: str, limit: int, window_seconds: int) -> bool
+}
+class "Settings" as gateway.src.config.Settings {
+  AGENTS_URL : str
+  COMMS_URL : str
+  DASHBOARD_URL : str
+  JWT_ALGORITHM : str
+  JWT_EXPIRY_MINUTES : int
+  JWT_SECRET : str
+  MAX_BODY_BYTES : int
+  MCP_URL : str
+  MEMORY_URL : str
+  MINDOS_ADMIN_PASSWORD_HASH : str
+  MINDOS_ADMIN_USERNAME : str
+  MINDOS_API_KEY : str
+  MINDOS_ENV : str
+  RATE_LIMITER_TYPE : str
+  RATE_LIMIT_REQUESTS : int
+  RATE_LIMIT_WINDOW_SECONDS : int
+  REDIS_URL : str
+  SERVICE_NAME : str
+}
+gateway.src.infrastructure.adapters.in_memory_rate_limiter.InMemoryRateLimiter --|> gateway.src.application.ports.rate_limiter.RateLimiterPort
+gateway.src.infrastructure.adapters.redis_rate_limiter.RedisRateLimiter --|> gateway.src.application.ports.rate_limiter.RateLimiterPort
+@enduml

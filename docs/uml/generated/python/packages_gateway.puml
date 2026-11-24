@@ -1,0 +1,24 @@
+@startuml packages_gateway
+!include ../../src/_tema.iuml
+title gateway — paquetes (generado con pyreverse)
+left to right direction
+set namespaceSeparator none
+package "gateway.src.application.ports.rate_limiter" as gateway.src.application.ports.rate_limiter {
+}
+package "gateway.src.application.services.security" as gateway.src.application.services.security {
+}
+package "gateway.src.config" as gateway.src.config {
+}
+package "gateway.src.infrastructure.adapters.in_memory_rate_limiter" as gateway.src.infrastructure.adapters.in_memory_rate_limiter {
+}
+package "gateway.src.infrastructure.adapters.redis_rate_limiter" as gateway.src.infrastructure.adapters.redis_rate_limiter {
+}
+package "gateway.src.main" as gateway.src.main {
+}
+gateway.src.infrastructure.adapters.in_memory_rate_limiter --> gateway.src.application.ports.rate_limiter
+gateway.src.infrastructure.adapters.redis_rate_limiter --> gateway.src.application.ports.rate_limiter
+gateway.src.main --> gateway.src.application.services.security
+gateway.src.main --> gateway.src.config
+gateway.src.main --> gateway.src.infrastructure.adapters.in_memory_rate_limiter
+gateway.src.main --> gateway.src.infrastructure.adapters.redis_rate_limiter
+@enduml

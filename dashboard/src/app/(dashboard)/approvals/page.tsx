@@ -1,25 +1,84 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
-import { ErrorBanner } from "@/components/ErrorBanner";
+import { Button, Card, EmptyState, ErrorNotice, MonoLabel, PageHeader, Skeleton } from "@/components/ui";
 import { ApiError, listPendingApprovals, resolveApproval } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth";
 import type { ApprovalRequestDto } from "@/lib/types";
 
+function describeError(err: unknown, fallback: string): string {
+  if (err instanceof ApiError && err.detail) return `${err.detail} ${fallback}`;
+  return fallback;
+}
+
+function formatParam(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function InputsTable({ inputs }: { inputs: Record<string, unknown> }) {
+  const captionId = useId();
+  const entries = Object.entries(inputs);
+  if (entries.length === 0) {
+    return <p className="text-body-sm text-slate">Esta acción no lleva parámetros.</p>;
+  }
+  return (
+    <div role="region" aria-labelledby={captionId} tabIndex={0} className="max-w-full overflow-x-auto">
+      <table className="w-full border-collapse text-left">
+        <caption id={captionId} className="sr-only">
+          Parámetros de la acción
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" className="border-b border-obsidian py-2 pr-4 text-left">
+              <MonoLabel>Parámetro</MonoLabel>
+            </th>
+            <th scope="col" className="border-b border-obsidian py-2 text-left">
+              <MonoLabel>Valor</MonoLabel>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map(([key, value]) => (
+            <tr key={key}>
+              <th scope="row" className="border-b border-hairline py-2 pr-4 align-top font-mono text-mono break-all text-obsidian">
+                {key}
+              </th>
+              <td className="border-b border-hairline py-2 align-top text-body-sm break-all text-slate">
+                {formatParam(value)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function ApprovalsPage() {
   const { username } = useAuth();
   const [approvals, setApprovals] = useState<ApprovalRequestDto[] | null>(null);
+  const [resolved, setResolved] = useState<Record<string, "approved" | "rejected">>({});
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [resolving, setResolving] = useState<{ id: string; approved: boolean } | null>(null);
 
   function load() {
     setIsLoading(true);
     setError(null);
     listPendingApprovals()
-      .then((r) => setApprovals(r.approvals))
-      .catch((err) => setError(err instanceof ApiError ? err.detail : "No se pudieron cargar las aprobaciones."))
+      .then((r) => {
+        setApprovals(r.approvals);
+        setResolved({});
+      })
+      .catch((err) => setError(describeError(err, "Actualiza la lista e inténtalo de nuevo.")))
       .finally(() => setIsLoading(false));
   }
 
@@ -29,70 +88,95 @@ export default function ApprovalsPage() {
   useEffect(load, []);
 
   async function handleResolve(id: string, approved: boolean) {
-    setResolvingId(id);
+    setResolving({ id, approved });
     setError(null);
     try {
       await resolveApproval(id, approved, username ?? undefined);
-      setApprovals((prev) => (prev ? prev.filter((a) => a.id !== id) : prev));
+      setResolved((prev) => ({ ...prev, [id]: approved ? "approved" : "rejected" }));
     } catch (err) {
-      setError(err instanceof ApiError ? err.detail : "No se pudo resolver la aprobación.");
+      setError(describeError(err, "Inténtalo de nuevo."));
     } finally {
-      setResolvingId(null);
+      setResolving(null);
     }
   }
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Bandeja de aprobaciones</h1>
-        <button onClick={load} className="text-sm text-blue-600 hover:underline dark:text-blue-400">
-          Actualizar
-        </button>
-      </div>
-      <p className="mb-4 text-sm text-zinc-500 dark:text-zinc-400">
-        Capacidades sensibles que un agente pausó a mitad de razonamiento, a la espera de tu confirmación.
-      </p>
+      <PageHeader
+        title="Aprobaciones"
+        continuation="lo que el agente espera de ti"
+        description="Acciones que el agente detuvo hasta que tú las confirmes."
+        actions={
+          <Button type="button" variant="ghost" onClick={load} disabled={isLoading}>
+            Actualizar
+          </Button>
+        }
+      />
 
-      <ErrorBanner message={error} />
-      {isLoading && <p className="text-sm text-zinc-500 dark:text-zinc-400">Cargando…</p>}
+      {error && (
+        <div className="mb-6">
+          <ErrorNotice>{error}</ErrorNotice>
+        </div>
+      )}
+
+      {isLoading && approvals === null && (
+        <div aria-live="polite">
+          <p className="text-caption text-slate">Cargando lo que espera tu aprobación. Espera un momento.</p>
+          <Skeleton className="mt-3 h-36 w-full" />
+          <Skeleton className="mt-3 h-36 w-full" />
+        </div>
+      )}
 
       {approvals && approvals.length === 0 && (
-        <p className="text-sm italic text-zinc-400">No hay aprobaciones pendientes.</p>
+        <EmptyState
+          title="No hay nada esperando tu aprobación."
+          action={
+            <Button type="button" variant="ghost" onClick={load} disabled={isLoading}>
+              Actualizar
+            </Button>
+          }
+        >
+          Cuando el agente pause una acción, aparecerá aquí.
+        </EmptyState>
       )}
 
       {approvals && approvals.length > 0 && (
-        <ul className="space-y-3">
-          {approvals.map((a) => (
-            <li key={a.id} className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="font-medium text-zinc-900 dark:text-zinc-50">{a.capability_name}</span>
-                <span className="text-xs text-zinc-400">{new Date(a.created_at).toLocaleString()}</span>
-              </div>
-              <pre className="mb-3 overflow-x-auto rounded bg-zinc-100 p-2 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-                {JSON.stringify(a.inputs, null, 2)}
-              </pre>
-              <p className="mb-3 text-xs text-zinc-400">
-                episodio {a.episode_id.slice(0, 8)}… · paso #{a.step_id}
-                {a.reply_to && ` · notificará por ${a.reply_to.provider}`}
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleResolve(a.id, true)}
-                  disabled={resolvingId === a.id}
-                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-                >
-                  Aprobar
-                </button>
-                <button
-                  onClick={() => handleResolve(a.id, false)}
-                  disabled={resolvingId === a.id}
-                  className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
-                >
-                  Rechazar
-                </button>
-              </div>
-            </li>
-          ))}
+        <ul className="space-y-4">
+          {approvals.map((a) => {
+            const outcome = resolved[a.id];
+            const busy = resolving?.id === a.id;
+            return (
+              <Card as="li" key={a.id} className="min-w-0">
+                <div className="flex flex-wrap items-baseline justify-between gap-3">
+                  <p className="font-mono text-mono text-obsidian">{a.capability_name}</p>
+                  <p className="font-mono text-mono-sm text-muted">{new Date(a.created_at).toLocaleString("es")}</p>
+                </div>
+                <div className="mt-4">
+                  <InputsTable inputs={a.inputs} />
+                </div>
+                <p className="mt-3 font-mono text-mono-sm text-muted">
+                  episodio {a.episode_id.slice(0, 8)} · paso {a.step_id}
+                  {a.reply_to && ` · aviso por ${a.reply_to.provider}`}
+                </p>
+                <div className="mt-4">
+                  {outcome ? (
+                    <p role="status" className="text-body-sm font-medium text-obsidian">
+                      {outcome === "approved" ? "Aprobada" : "Rechazada"}
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" onClick={() => handleResolve(a.id, true)} disabled={busy}>
+                        {busy && resolving?.approved ? "Guardando…" : "Aprobar"}
+                      </Button>
+                      <Button type="button" variant="ghost" onClick={() => handleResolve(a.id, false)} disabled={busy}>
+                        {busy && resolving && !resolving.approved ? "Guardando…" : "Rechazar"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
         </ul>
       )}
     </div>

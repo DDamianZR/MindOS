@@ -19,8 +19,46 @@ class Settings(BaseSettings):
     # Event Bus
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # --- Proveedor de razonamiento (F7-T1) ---
+    # 'auto': Claude si hay ANTHROPIC_API_KEY; si no, Ollama en producción y Mock en desarrollo
+    # (el comportamiento previo a la Fase 7). 'anthropic' | 'ollama' | 'mock' lo fijan explícito.
+    LLM_PROVIDER: str = "auto"
+    # Vacío = el SDK resuelve la credencial por su cuenta (variable de entorno, perfil de
+    # `ant auth login`...). Nunca se escribe en el repo: vive en `.env`.
+    ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL: str = "claude-sonnet-5-5"
+    # Esfuerzo de razonamiento del planner/reviewer (LlmPort): tareas agénticas de varios pasos.
+    ANTHROPIC_EFFORT: str = "medium"
+    # Fallback del lado del servidor cuando un clasificador de seguridad declina una petición
+    # (beta `server-side-fallback-2026-07-01`). Sin él, una petición declinada simplemente termina.
+    ANTHROPIC_FALLBACKS: bool = True
+
+    # --- Asistente personal (F7-T2..T4) ---
+    # Esfuerzo del chat: 'low' es el punto de partida recomendado para conversación y búsqueda
+    # (responde antes); súbelo a 'medium' si las respuestas se quedan cortas de análisis.
+    ASSISTANT_EFFORT: str = "low"
+    ASSISTANT_MAX_TOKENS: int = 16000
+    # Tope de rondas de herramientas por turno: corta un bucle que no converge.
+    ASSISTANT_MAX_TOOL_ROUNDS: int = 10
+    # Nombre de la persona dueña de esta instancia (mono-usuario). Opcional.
+    MINDOS_OWNER_NAME: str = ""
+    # Búsqueda y lectura web con las herramientas de servidor de Claude (Fase 8).
+    ASSISTANT_WEB_TOOLS: bool = True
+    # Precios en USD por millón de tokens, para el costo estimado de /assistant/stats (Fase 8).
+    # Un modelo que no esté aquí cuenta como 0.
+    ASSISTANT_PRICING: dict[str, dict[str, float]] = {
+        "claude-sonnet-5-5": {"input": 2.00, "output": 10.00, "cache_read": 0.10, "cache_write": 2.50},
+    }
+
+    # --- Rutinas programadas (Fase 8) ---
+    ROUTINES_ENABLED: bool = True
+    # Zona horaria IANA en que se interpretan las expresiones cron. Vacío = la del servidor.
+    ROUTINES_TIMEZONE: str = ""
+    ROUTINES_TICK_SECONDS: int = 30
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
 settings = Settings()
