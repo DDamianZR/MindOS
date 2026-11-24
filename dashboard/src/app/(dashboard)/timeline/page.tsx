@@ -1,13 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 
-import { ErrorBanner } from "@/components/ErrorBanner";
+import { ObjectTypeBadge } from "@/components/ObjectTypeBadge";
+import { Button, Card, EmptyState, ErrorNotice, PageHeader, SectionTitle, Skeleton } from "@/components/ui";
 import { ApiError, getNodeHistory, timeTravel } from "@/lib/api-client";
 import { relationLabel } from "@/lib/object-type-style";
 import type { GetNodeHistoryResponse, TimeTravelResponse } from "@/lib/types";
 
+const FIELD =
+  "h-10 w-full rounded-md border border-hairline bg-paper px-3 font-mono text-body-sm text-obsidian placeholder:text-muted focus:border-obsidian";
+
 export default function TimelinePage() {
+  const nodeFieldId = useId();
+  const nodeHintId = useId();
+  const sliderId = useId();
+  const nodeInputRef = useRef<HTMLInputElement>(null);
   const [inputValue, setInputValue] = useState("");
   const [nodeId, setNodeId] = useState("");
   const [history, setHistory] = useState<GetNodeHistoryResponse | null>(null);
@@ -69,45 +77,120 @@ export default function TimelinePage() {
     };
   }, [nodeId, sliderMs]);
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (inputValue.trim()) setNodeId(inputValue.trim());
+    const id = inputValue.trim();
+    if (!id) {
+      nodeInputRef.current?.setCustomValidity("Escribe el identificador de una nota.");
+      nodeInputRef.current?.reportValidity();
+      return;
+    }
+    nodeInputRef.current?.setCustomValidity("");
+    setNodeId(id);
   }
 
   return (
     <div>
-      <h1 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">Timeline</h1>
+      <PageHeader
+        title="Línea de tiempo"
+        continuation="lo que pensabas en cada momento"
+        description="Recorre las versiones de una nota y mira cómo estaba en cada momento."
+      />
 
-      <form onSubmit={handleSubmit} className="mb-6 flex gap-2">
-        <input
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          placeholder="ID de nodo (UUID) — cópialo desde Búsqueda"
-          className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm font-mono dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-        />
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
-        >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4 sm:flex-row sm:items-end">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <label htmlFor={nodeFieldId} className="text-body-sm font-medium text-obsidian">
+            Identificador
+          </label>
+          <p id={nodeHintId} className="text-caption text-slate">
+            Lo encuentras al abrir un resultado en Buscar.
+          </p>
+          <input
+            ref={nodeInputRef}
+            id={nodeFieldId}
+            name="node_id"
+            type="text"
+            value={inputValue}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              e.target.setCustomValidity("");
+            }}
+            onInvalid={(e) => e.currentTarget.setCustomValidity("Escribe el identificador de una nota.")}
+            placeholder="pega aquí el identificador"
+            aria-describedby={nodeHintId}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            autoComplete="off"
+            enterKeyHint="go"
+            required
+            className={FIELD}
+          />
+        </div>
+        <Button type="submit" disabled={isLoading} className="h-10 w-full sm:w-auto">
           {isLoading ? "Cargando…" : "Cargar"}
-        </button>
+        </Button>
       </form>
 
-      <ErrorBanner message={error} />
+      {error && (
+        <div className="mt-6">
+          <ErrorNotice>{error} Revisa la conexión y vuelve a intentarlo.</ErrorNotice>
+        </div>
+      )}
 
-      {history && (
-        <section className="mb-8">
-          <h2 className="mb-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-            Versiones capturadas ({history.versions.length})
-          </h2>
-          <ol className="space-y-2 border-l-2 border-zinc-200 pl-4 dark:border-zinc-800">
+      {isLoading && !history && (
+        <div className="mt-12 space-y-3" aria-busy="true">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
+      )}
+
+      {!nodeId && !history && !isLoading && !error && (
+        <div className="mt-12">
+          <EmptyState
+            title="Todavía no hay una línea de tiempo"
+            action={
+              <Button type="button" variant="ghost" onClick={() => nodeInputRef.current?.focus()}>
+                Escribir el identificador
+              </Button>
+            }
+          >
+            Pega el identificador de una nota. Lo encuentras al abrir un resultado en Buscar.
+          </EmptyState>
+        </div>
+      )}
+
+      {history && history.versions.length === 0 && !isLoading && (
+        <div className="mt-12">
+          <EmptyState
+            title="Esta nota no tiene versiones."
+            action={
+              <Button type="button" variant="ghost" onClick={() => nodeInputRef.current?.focus()}>
+                Probar otro identificador
+              </Button>
+            }
+          >
+            Revisa el identificador y vuelve a cargarla.
+          </EmptyState>
+        </div>
+      )}
+
+      {history && history.versions.length > 0 && (
+        <section className="mt-12">
+          <SectionTitle aside={`${history.versions.length} guardadas`}>Versiones</SectionTitle>
+          <div className="mb-5">
+            <ObjectTypeBadge objectType={history.object_type} />
+          </div>
+          <ol className="space-y-6">
             {history.versions.map((v) => (
-              <li key={v.version} className="relative">
-                <span className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full bg-zinc-400" />
-                <p className="text-xs text-zinc-400">{new Date(v.created_at).toLocaleString()}</p>
-                <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">v{v.version} · {v.title}</p>
+              <li key={v.version} className="border-l border-hairline pl-4">
+                <span aria-hidden="true" className="mb-2 block h-0.5 w-4 bg-periwinkle" />
+                <p className="font-mono text-mono-sm text-muted">{new Date(v.created_at).toLocaleString()}</p>
+                <p className="mt-1 break-words text-body-sm font-medium text-obsidian">
+                  v{v.version} · {v.title}
+                </p>
               </li>
             ))}
           </ol>
@@ -115,42 +198,53 @@ export default function TimelinePage() {
       )}
 
       {bounds && sliderMs !== null && (
-        <section>
-          <h2 className="mb-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Viajar en el tiempo (&quot;as-of&quot;)</h2>
+        <section className="mt-16">
+          <SectionTitle>En ese momento</SectionTitle>
+          <label htmlFor={sliderId} className="mb-1.5 block text-body-sm font-medium text-obsidian">
+            Momento
+          </label>
           <input
+            id={sliderId}
             type="range"
             min={bounds.min}
             max={bounds.max}
             value={sliderMs}
             onChange={(e) => setSliderMs(Number(e.target.value))}
-            className="w-full"
+            aria-valuetext={new Date(sliderMs).toLocaleString()}
+            className="h-10 w-full accent-obsidian scheme-light"
+            style={{ accentColor: "#000000" }}
           />
-          <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">{new Date(sliderMs).toLocaleString()}</p>
+          <p className="mt-2 mb-6 font-mono text-mono-sm text-muted">{new Date(sliderMs).toLocaleString()}</p>
 
-          {asOf && (
-            <div className="rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
-              {asOf.found && asOf.version ? (
-                <>
-                  <p className="mb-1 font-medium text-zinc-900 dark:text-zinc-50">
-                    v{asOf.version.version} · {asOf.version.title}
-                  </p>
-                  <p className="mb-2 text-sm text-zinc-600 dark:text-zinc-400">{asOf.version.content}</p>
-                  {asOf.relations.length > 0 && (
-                    <ul className="text-xs text-zinc-500">
-                      {asOf.relations.map((r, i) => (
-                        <li key={i}>
-                          {r.source_id === nodeId ? "→" : "←"} {relationLabel(r.relation_type)}{" "}
-                          {(r.source_id === nodeId ? r.target_id : r.source_id).slice(0, 8)}…
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </>
-              ) : (
-                <p className="text-sm text-zinc-400 italic">El nodo aún no existía en ese instante.</p>
+          {asOf && asOf.found && asOf.version ? (
+            <Card>
+              <p className="break-words text-body-sm font-medium text-obsidian">
+                v{asOf.version.version} · {asOf.version.title}
+              </p>
+              <p className="mt-2 break-words text-body-sm text-slate">{asOf.version.content}</p>
+              {asOf.relations.length > 0 && (
+                <ul className="mt-4 space-y-2">
+                  {asOf.relations.map((r, i) => (
+                    <li key={i} className="break-all font-mono text-mono-sm text-muted">
+                      {r.source_id === nodeId ? "→" : "←"} {relationLabel(r.relation_type)}{" "}
+                      {(r.source_id === nodeId ? r.target_id : r.source_id).slice(0, 8)}…
+                    </li>
+                  ))}
+                </ul>
               )}
-            </div>
-          )}
+            </Card>
+          ) : asOf ? (
+            <EmptyState
+              title="En ese momento esta nota todavía no existía."
+              action={
+                <Button type="button" variant="ghost" onClick={() => setSliderMs(bounds.max)}>
+                  Ir a hoy
+                </Button>
+              }
+            >
+              Mueve el control hacia hoy.
+            </EmptyState>
+          ) : null}
         </section>
       )}
     </div>

@@ -1,21 +1,41 @@
-// Color por object_type, compartido entre Búsqueda/Grafo/Timeline (F4-T1) para que un mismo
-// tipo se reconozca visualmente igual en toda la Dashboard.
-const PALETTE: Record<string, string> = {
-  note: "#64748b", idea: "#f59e0b", document: "#0ea5e9", conversation: "#14b8a6",
-  concept: "#8b5cf6", person: "#ec4899", project: "#6366f1", task: "#22c55e",
-  resource: "#84cc16", technology: "#06b6d4", event: "#f97316", observation: "#78716c",
-  experience: "#d946ef",
-  question: "#eab308", hypothesis: "#a855f7", investigation: "#3b82f6", evidence: "#10b981",
-  decision: "#ef4444", outcome: "#059669", learning: "#2563eb", fact: "#16a34a", insight: "#db2777",
-};
-const FALLBACK_COLORS = ["#64748b", "#0ea5e9", "#8b5cf6", "#f59e0b", "#22c55e", "#ec4899"];
+import type { Tone } from "@/components/ui";
+
+// Dos familias, no un color por tipo: con veintidós tonos el grafo no se lee.
+// Pensamiento (blush) son los nodos del razonamiento; todo lo demás es memoria (sky).
+const THOUGHT_TYPES = new Set([
+  "question",
+  "hypothesis",
+  "investigation",
+  "evidence",
+  "decision",
+  "outcome",
+  "learning",
+  "fact",
+  "insight",
+]);
+
+/**
+ * Hex para Cytoscape, que no entiende las clases pastel.
+ * Relleno de la familia, borde y texto en negro, arista en slate, selección en periwinkle.
+ */
+export const OBJECT_FAMILY_HEX = {
+  memoria: "#c1dff9",
+  pensamiento: "#fde3f6",
+  border: "#000000",
+  text: "#000000",
+  edge: "#4d4d4d",
+  selectedBorder: "#bdbbff",
+} as const;
+
+export function objectTypeTone(type: string | null | undefined): Tone {
+  if (type && THOUGHT_TYPES.has(type)) return "pensamiento";
+  return "memoria";
+}
 
 export function objectTypeColor(objectType: string | null | undefined): string {
-  if (!objectType) return "#94a3b8";
-  if (PALETTE[objectType]) return PALETTE[objectType];
-  let hash = 0;
-  for (let i = 0; i < objectType.length; i++) hash = (hash * 31 + objectType.charCodeAt(i)) >>> 0;
-  return FALLBACK_COLORS[hash % FALLBACK_COLORS.length];
+  return objectTypeTone(objectType) === "pensamiento"
+    ? OBJECT_FAMILY_HEX.pensamiento
+    : OBJECT_FAMILY_HEX.memoria;
 }
 
 const RELATION_LABELS: Record<string, string> = {
