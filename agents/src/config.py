@@ -50,6 +50,12 @@ class Settings(BaseSettings):
         "claude-sonnet-5-5": {"input": 2.00, "output": 10.00, "cache_read": 0.10, "cache_write": 2.50},
     }
 
+    # --- Persistencia (Fase 9) ---
+    # 'in_memory': conversaciones, rutinas y uso viven en el proceso y se pierden al reiniciar.
+    # 'postgres': se guardan en DATABASE_URL (la misma base que Memory, tablas `agent_*`).
+    AGENTS_STORE: str = "in_memory"
+    DATABASE_URL: str = "postgresql+asyncpg://mindos_user:mindos_secure_password@localhost:5432/mindos_db"
+
     # --- Rutinas programadas (Fase 8) ---
     ROUTINES_ENABLED: bool = True
     # Zona horaria IANA en que se interpretan las expresiones cron. Vacío = la del servidor.

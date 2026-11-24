@@ -187,6 +187,7 @@ class RoutineRunner:
                 chunks.append(event.text)
             elif isinstance(event, TurnFailed):
                 error = event.message
+        await self._conversations.save(conversation)
         if error is not None:
             return error, True
         return "".join(chunks), False

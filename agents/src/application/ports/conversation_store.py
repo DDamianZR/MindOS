@@ -12,4 +12,12 @@ class ConversationStorePort(ABC):
 
     @abstractmethod
     async def get(self, conversation_id: str) -> Conversation | None:
-        """Devuelve la conversación, o None si no existe (o el servicio se reinició)."""
+        """Devuelve la conversación, o None si no existe."""
+
+    @abstractmethod
+    async def save(self, conversation: Conversation) -> None:
+        """
+        Persiste el estado actual de la conversación (historial del proveedor y transcripción).
+        Se llama al cerrar cada turno. El historial es solo-anexar: lo guardado debe poder
+        reenviarse al proveedor tal cual, con los bloques de razonamiento y sus firmas intactos.
+        """
