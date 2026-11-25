@@ -8,6 +8,7 @@ normal: el resultado queda guardado en la ejecución, no en el chat de la person
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import tzlocal
 from croniter import croniter
 from mindos_common.logging import get_logger
 
@@ -187,6 +188,7 @@ class RoutineRunner:
                 chunks.append(event.text)
             elif isinstance(event, TurnFailed):
                 error = event.message
+        await self._conversations.save(conversation)
         if error is not None:
             return error, True
         return "".join(chunks), False
@@ -301,24 +303,24 @@ def _join_weekdays(names: list[str]) -> str:
 
 
 def _local_timezone_name() -> str:
-    tz = datetime.now().astimezone().tzinfo
-    key = getattr(tz, "key", None)
-    if isinstance(key, str) and key:
-        return key
-    if tz is not None:
-        name = tz.tzname(datetime.now())
-        if name:
-            return name
+    """
+    Nombre IANA de la zona del servidor ("America/Mexico_City"), nunca el nombre que da el
+    sistema ("Hora estándar central (México)" en Windows): la rutina se guarda y se vuelve a
+    leer en otro proceso, y solo un nombre IANA se resuelve igual en cualquier máquina y con
+    los cambios de horario. `tzlocal` traduce la zona de Windows y lee la de Linux.
+    """
+    try:
+        name = tzlocal.get_localzone_name()
+    except Exception:  # sin zona configurada (contenedor mínimo): se avisa y se usa UTC
+        name = None
+    if name:
+        return name
+    logger.warning("No se pudo determinar la zona horaria del servidor; las rutinas usan UTC. Fija ROUTINES_TIMEZONE.")
     return "UTC"
 
 
 def _tzinfo_for(name: str):
     try:
         return ZoneInfo(name)
-    except ZoneInfoNotFoundError:
-        local = datetime.now().astimezone().tzinfo
-        # En Windows la zona local no tiene clave IANA: guardamos su nombre y la resolvemos
-        # contra el reloj del proceso, que es la zona con la que se creó la rutina.
-        if local is not None and name == _local_timezone_name():
-            return local
-        raise ScheduleError("Esa zona horaria no es válida.") from None
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ScheduleError("Esa zona horaria no es válida. Usa un nombre como America/Mexico_City.") from None

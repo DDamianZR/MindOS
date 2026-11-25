@@ -42,12 +42,12 @@ class UsageSnapshot:
 
 class UsageRecorderPort(ABC):
     """
-    Anota cada turno cerrado del asistente y devuelve el uso acumulado desde el arranque
-    del registro. La implementación vive en el proceso: al reiniciar el servicio, vuelve a cero.
+    Anota cada turno cerrado del asistente y devuelve el uso acumulado desde el primer turno
+    registrado. En memoria se reinicia con el servicio; en Postgres se conserva (Fase 9).
     """
 
     @abstractmethod
-    def record_turn(
+    async def record_turn(
         self,
         conversation_id: str,
         *,
@@ -67,7 +67,7 @@ class UsageRecorderPort(ABC):
         """
 
     @abstractmethod
-    def snapshot(self, model: str) -> UsageSnapshot:
+    async def snapshot(self, model: str) -> UsageSnapshot:
         """
         Agregados para `/assistant/stats`.
 

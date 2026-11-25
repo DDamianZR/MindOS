@@ -1,6 +1,7 @@
 import asyncio
 import os
 from contextlib import asynccontextmanager, suppress
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
@@ -16,12 +17,14 @@ from mindos_schemas.capabilities import (
     RegisterCapabilitiesRequest,
     RegisterCapabilitiesResponse,
 )
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agents.src.application.assistant.routines import RoutineRunner
 from agents.src.application.assistant.toolbox import AssistantToolbox
 from agents.src.application.ports.conversation_store import ConversationStorePort
 from agents.src.application.ports.personal_agent import PersonalAgentPort
 from agents.src.application.ports.routine_store import RoutineStorePort
+from agents.src.application.ports.usage_recorder import UsageRecorderPort
 from agents.src.config import settings
 from agents.src.domain.executor.capability_executor import CapabilityExecutor
 from agents.src.domain.planner.agent_graph import AgentState, PlannerExecutorReviewerGraph
@@ -40,8 +43,13 @@ from agents.src.infrastructure.adapters.in_memory_conversation_store import (
     InMemoryConversationStore,
 )
 from agents.src.infrastructure.adapters.in_memory_routine_store import InMemoryRoutineStore
+from agents.src.infrastructure.adapters.in_memory_usage_recorder import InMemoryUsageRecorder
 from agents.src.infrastructure.adapters.mock_llm import MockLlm
 from agents.src.infrastructure.adapters.ollama_llm import OllamaLlm
+from agents.src.infrastructure.adapters.pg_conversation_store import PgConversationStore
+from agents.src.infrastructure.adapters.pg_routine_store import PgRoutineStore
+from agents.src.infrastructure.adapters.pg_usage_recorder import PgUsageRecorder
+from agents.src.infrastructure.database.session import create_session_factory
 
 configure_logging("AgentsService", settings.MINDOS_ENV)
 logger = get_logger("agents_main")
@@ -68,6 +76,9 @@ async def lifespan(app: FastAPI):
             with suppress(asyncio.CancelledError):
                 await task
             logger.info("Planificador de rutinas detenido")
+        # Después del planificador: un tic a medias no debe encontrar el motor ya cerrado.
+        if stores.engine is not None:
+            await stores.engine.dispose()
 
 
 app = FastAPI(
@@ -82,11 +93,42 @@ capability_registry = InMemoryCapabilityRegistry()
 # Aprobaciones pendientes (F1-T8/F3-T1/F3-T7), resueltas vía Gateway.
 approval_store = InMemoryApprovalStore()
 
-# Conversaciones del asistente personal (F7-T3).
-conversation_store = InMemoryConversationStore()
 
-# Rutinas programadas (Fase 8), en memoria como las conversaciones.
-routine_store = InMemoryRoutineStore()
+@dataclass
+class AgentStores:
+    """Conversaciones, rutinas y uso de este proceso, y el motor que los sostiene."""
+
+    conversations: ConversationStorePort
+    routines: RoutineStorePort
+    usage: UsageRecorderPort
+    engine: AsyncEngine | None
+
+
+def build_stores(store_type: str, database_url: str) -> AgentStores:
+    """Memoria o Postgres. En Postgres los tres comparten un solo motor, para cerrarlo junto."""
+    if store_type == "in_memory":
+        return AgentStores(
+            conversations=InMemoryConversationStore(),
+            routines=InMemoryRoutineStore(),
+            usage=InMemoryUsageRecorder(),
+            engine=None,
+        )
+    if store_type == "postgres":
+        engine, session_factory = create_session_factory(database_url)
+        return AgentStores(
+            conversations=PgConversationStore(session_factory),
+            routines=PgRoutineStore(session_factory),
+            usage=PgUsageRecorder(session_factory),
+            engine=engine,
+        )
+    raise ValueError("El almacén de los agentes tiene que ser in_memory o postgres.")
+
+
+# Nombres de módulo aparte de `stores`: los tests los sustituyen y las dependencias los releen.
+stores = build_stores(settings.AGENTS_STORE, settings.DATABASE_URL)
+conversation_store = stores.conversations
+routine_store = stores.routines
+usage_recorder = stores.usage
 
 _anthropic_client: anthropic.AsyncAnthropic | None = None
 _assistant_http_client: httpx.AsyncClient | None = None
@@ -147,6 +189,10 @@ def get_conversation_store() -> ConversationStorePort:
 
 def get_routine_store() -> RoutineStorePort:
     return routine_store
+
+
+def get_usage_recorder() -> UsageRecorderPort:
+    return usage_recorder
 
 
 def get_personal_agent(

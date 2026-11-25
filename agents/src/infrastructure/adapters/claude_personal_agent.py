@@ -341,6 +341,9 @@ class ClaudePersonalAgent(PersonalAgentPort):
         try:
             while True:
                 round_text: list[str] = []
+                # El texto de cada ronda llega como un bloque aparte; sin un salto entre rondas,
+                # "...qwen3:8b." y "**Tu servidor**" se pegaban en la interfaz (visto en vivo).
+                needs_break = bool("".join(answer_parts).strip())
                 started_ids: set[str] = set()
                 finished_ids: set[str] = set()
                 try:
@@ -359,6 +362,9 @@ class ClaudePersonalAgent(PersonalAgentPort):
                             if event.type != "content_block_delta":
                                 continue
                             if event.delta.type == "text_delta":
+                                if needs_break and not round_text and event.delta.text.strip():
+                                    round_text.append("\n\n")
+                                    yield TextDelta("\n\n")
                                 round_text.append(event.delta.text)
                                 yield TextDelta(event.delta.text)
                             elif event.delta.type == "thinking_delta" and event.delta.thinking:

@@ -122,7 +122,7 @@ class InMemoryUsageRecorder(UsageRecorderPort):
         self._since = _as_utc(self._clock()).isoformat()
         self._turns: deque[_Turn] = deque(maxlen=max_turns)
 
-    def record_turn(
+    async def record_turn(
         self,
         conversation_id: str,
         *,
@@ -141,7 +141,7 @@ class InMemoryUsageRecorder(UsageRecorderPort):
             at=_as_utc(at or self._clock()),
         ))
 
-    def snapshot(self, model: str) -> UsageSnapshot:
+    async def snapshot(self, model: str) -> UsageSnapshot:
         turns = self._turns
         usage = _sum_usage(turns)
         avg = (

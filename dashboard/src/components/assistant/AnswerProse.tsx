@@ -21,7 +21,10 @@ function normalize(title: string): string {
  * Una página web con el mismo título se queda como cita, sin enlace.
  */
 function markCitations(text: string): string {
-  return text.replace(/«([^»\n]{1,200})»/g, (_match, title: string) => {
+  // Con la búsqueda web, el modelo a veces escribe <cite>dominio</cite>: el Markdown lo
+  // mostraría como texto literal. Se quita la etiqueta y queda el contenido (visto en vivo).
+  const withoutCiteTags = text.replace(/<\/?cite\b[^>]*>/gi, "");
+  return withoutCiteTags.replace(/«([^»\n]{1,200})»/g, (_match, title: string) => {
     const label = title.replace(/([\[\]\\])/g, "\\$1");
     return `[«${label}»](${CITE_PREFIX}${encodeURIComponent(title)})`;
   });
@@ -59,7 +62,17 @@ function AnswerProseImpl({
             if (href?.startsWith(CITE_PREFIX)) {
               const title = decodeURIComponent(href.slice(CITE_PREFIX.length));
               const source = sourceByTitle.get(normalize(title));
-              if (!source || source.kind === "web" || !source.node_id) return <mark className="cite">{children}</mark>;
+              // El subrayado periwinkle significa "viene de tu memoria": solo lo lleva una cita
+              // que coincide con un nodo consultado en este turno. Una página web citada entre
+              // «» enlaza a la página sin ese subrayado; un título sin fuente queda como texto.
+              if (source?.kind === "web" && source.url) {
+                return (
+                  <a href={source.url} target="_blank" rel="noreferrer noopener">
+                    {children}
+                  </a>
+                );
+              }
+              if (!source || !source.node_id) return <>{children}</>;
               return (
                 <Link
                   href={`/explain?node_id=${source.node_id}`}

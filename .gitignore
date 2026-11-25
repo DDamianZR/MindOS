@@ -35,3 +35,9 @@ Thumbs.db
 
 # Configuración local de herramientas del editor (no forma parte del proyecto)
 .claude/
+CLAUDE.md
+AGENTS.md
+.cursor/
+.opencode/
+.aider*
+.copilot*

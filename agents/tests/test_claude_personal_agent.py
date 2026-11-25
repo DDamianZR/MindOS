@@ -120,7 +120,10 @@ async def test_a_turn_with_one_tool_round_streams_events_in_order_and_keeps_hist
 
     events = await _run(agent, conversation, "¿Qué base de datos elegí?")
 
-    assert [e.type for e in events] == ["thinking", "text", "tool_start", "tool_end", "text", "text", "done"]
+    # El texto de después de la herramienta va separado del de antes por un salto de párrafo
+    # (sin él, "revisar." y "Elegiste" se pegaban en la interfaz; visto probando en vivo).
+    assert [e.type for e in events] == ["thinking", "text", "tool_start", "tool_end", "text", "text", "text", "done"]
+    assert events[4].text == "\n\n"
     tool_start, tool_end, done = events[2], events[3], events[-1]
     assert (tool_start.label, tool_start.input) == ("Buscando en tu memoria", {"query": "base de datos"})
     assert tool_end.ok and tool_end.summary == "2 fragmentos encontrados"
@@ -145,7 +148,7 @@ async def test_a_turn_with_one_tool_round_streams_events_in_order_and_keeps_hist
     assert conversation.transcript == [
         {"role": "user", "text": "¿Qué base de datos elegí?"},
         {
-            "role": "assistant", "text": "Déjame revisar. Elegiste Postgres.", "stop_reason": "end_turn",
+            "role": "assistant", "text": "Déjame revisar. \n\nElegiste Postgres.", "stop_reason": "end_turn",
             "tools": [{
                 "id": "toolu_1", "name": "search_memory", "ok": True,
                 "summary": "2 fragmentos encontrados", "sources": tool_end.sources,

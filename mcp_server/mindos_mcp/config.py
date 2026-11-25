@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        # El .env de la raíz es compartido por todos los servicios: cada uno ignora las
+        # variables de los demás (p.ej. ANTHROPIC_API_KEY) en vez de negarse a arrancar.
+        extra = "ignore"
 
 
 settings = Settings()

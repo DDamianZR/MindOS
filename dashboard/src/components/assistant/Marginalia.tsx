@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { type ReactNode, useState } from "react";
 
 import { MonoLabel } from "@/components/ui";
 import type { AssistantSource } from "@/lib/assistant-client";
@@ -109,6 +110,32 @@ function WebSource({ source }: { source: AssistantSource }) {
   );
 }
 
+const VISIBLE_SOURCES = 5;
+
+/**
+ * Lista con las primeras fuentes visibles y el resto plegado. Una búsqueda web devuelve hasta
+ * 10 páginas por consulta: sin tope, el margen era más largo que la respuesta (visto en vivo).
+ */
+function CappedList({ items }: { items: ReactNode[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const hidden = items.length - VISIBLE_SOURCES;
+  return (
+    <>
+      <ul className="mt-2 space-y-2.5">{expanded ? items : items.slice(0, VISIBLE_SOURCES)}</ul>
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          aria-expanded={expanded}
+          className="mt-2 font-mono text-mono-sm text-slate underline underline-offset-2 hover:text-obsidian"
+        >
+          {expanded ? "Ver menos" : `Ver ${hidden} más`}
+        </button>
+      )}
+    </>
+  );
+}
+
 /**
  * Notas al margen de una respuesta: qué consultó el asistente y de dónde salió
  * (tu memoria o una página). En pantallas anchas vive a la derecha; en angostas se pliega debajo.
@@ -136,22 +163,22 @@ export function Marginalia({ tools, thinking }: { tools: ToolRun[]; thinking: st
       {memory.length > 0 && (
         <div>
           <MonoLabel>De tu memoria</MonoLabel>
-          <ul className="mt-2 space-y-2.5">
-            {memory.map((source) => (
+          <CappedList
+            items={memory.map((source) => (
               <MemorySource key={source.node_id ?? source.title} source={source} />
             ))}
-          </ul>
+          />
         </div>
       )}
 
       {web.length > 0 && (
         <div>
           <MonoLabel>De la web</MonoLabel>
-          <ul className="mt-2 space-y-2.5">
-            {web.map((source) => (
+          <CappedList
+            items={web.map((source) => (
               <WebSource key={source.url ?? source.title} source={source} />
             ))}
-          </ul>
+          />
         </div>
       )}
 

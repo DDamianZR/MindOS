@@ -32,8 +32,7 @@ from agents.src.application.ports.personal_agent import (
     event_to_dict,
 )
 from agents.src.application.ports.usage_recorder import UsageRecorderPort
-from agents.src.infrastructure.adapters.in_memory_usage_recorder import get_usage_recorder
-from agents.src.main import get_conversation_store, get_personal_agent
+from agents.src.main import get_conversation_store, get_personal_agent, get_usage_recorder
 
 logger = get_logger("assistant_router")
 
@@ -105,7 +104,13 @@ async def assistant_chat(
             # El `finally` (y no solo el evento `done`) hace que un turno que termina en error
             # también cuente, y que se anote una sola vez.
             _busy_conversations.discard(conversation.id)
-            recorder.record_turn(
+            # Se guarda siempre, también si el turno falló o el cliente se fue: el agente ya dejó
+            # el historial consistente (rollback), y así no se pierde la conversación previa.
+            try:
+                await store.save(conversation)
+            except Exception as e:
+                logger.error("No se pudo guardar la conversación", error=str(e), error_type=type(e).__name__)
+            await recorder.record_turn(
                 conversation.id,
                 ok=ok,
                 duration_seconds=time.perf_counter() - started,
@@ -141,7 +146,7 @@ async def assistant_stats(
     agent: PersonalAgentPort = Depends(get_personal_agent),
     recorder: UsageRecorderPort = Depends(get_usage_recorder),
 ):
-    snap = recorder.snapshot(agent.model_name)
+    snap = await recorder.snapshot(agent.model_name)
     return AssistantStatsResponse(
         provider="demo" if agent.model_name == "demo" else "anthropic",
         model=agent.model_name,

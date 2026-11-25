@@ -43,6 +43,12 @@ class InMemoryConversationStore(ConversationStorePort):
             self._conversations.popitem(last=False)
         return conversation
 
+    async def save(self, conversation: Conversation) -> None:
+        # En memoria el objeto ya es el guardado (se comparte por referencia); solo se refresca
+        # su posición para el descarte por antigüedad.
+        if conversation.id in self._conversations:
+            self._conversations.move_to_end(conversation.id)
+
     async def get(self, conversation_id: str) -> Conversation | None:
         conversation = self._conversations.get(conversation_id)
         if conversation:

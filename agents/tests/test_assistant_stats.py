@@ -16,10 +16,7 @@ from agents.src.infrastructure.adapters.demo_personal_agent import DemoPersonalA
 from agents.src.infrastructure.adapters.in_memory_conversation_store import (
     InMemoryConversationStore,
 )
-from agents.src.infrastructure.adapters.in_memory_usage_recorder import (
-    InMemoryUsageRecorder,
-    get_usage_recorder,
-)
+from agents.src.infrastructure.adapters.in_memory_usage_recorder import InMemoryUsageRecorder
 from agents.tests.test_assistant_toolbox import FakeMemoryGateway
 
 
@@ -39,7 +36,7 @@ def client(monkeypatch):
     agents_main.app.dependency_overrides[agents_main.get_personal_agent] = (
         lambda: DemoPersonalAgent(AssistantToolbox(FakeMemoryGateway()), chunk_delay=0)
     )
-    agents_main.app.dependency_overrides[get_usage_recorder] = lambda: recorder
+    agents_main.app.dependency_overrides[agents_main.get_usage_recorder] = lambda: recorder
     yield TestClient(agents_main.app)
     agents_main.app.dependency_overrides.clear()
 
@@ -146,10 +143,10 @@ def test_provider_follows_the_injected_agent(client):
     assert len(body["turns_by_day"]) == 14
 
 
-def test_recorder_prices_a_real_sonnet_usage_by_hand():
+async def test_recorder_prices_a_real_sonnet_usage_by_hand():
     """Dos turnos con el uso que deja un turno real de Sonnet, sumados."""
     recorder = InMemoryUsageRecorder()
-    recorder.record_turn(
+    await recorder.record_turn(
         "conv-1",
         ok=True,
         duration_seconds=1.5,
@@ -161,7 +158,7 @@ def test_recorder_prices_a_real_sonnet_usage_by_hand():
             "cache_creation_input_tokens": 0,
         },
     )
-    recorder.record_turn(
+    await recorder.record_turn(
         "conv-1",
         ok=True,
         duration_seconds=2.5,
@@ -174,7 +171,7 @@ def test_recorder_prices_a_real_sonnet_usage_by_hand():
         },
     )
 
-    snap = recorder.snapshot("claude-sonnet-5-5")
+    snap = (await recorder.snapshot("claude-sonnet-5-5"))
 
     assert snap.conversations == 1
     assert snap.turns == 2
@@ -205,20 +202,20 @@ def test_recorder_prices_a_real_sonnet_usage_by_hand():
         6,
     )
     assert snap.estimated_cost_usd == hand == from_settings
-    assert recorder.snapshot("demo").estimated_cost_usd == 0.0
-    assert recorder.snapshot("modelo-sin-tarifa").estimated_cost_usd == 0.0
+    assert (await recorder.snapshot("demo")).estimated_cost_usd == 0.0
+    assert (await recorder.snapshot("modelo-sin-tarifa")).estimated_cost_usd == 0.0
 
 
-def test_turns_by_day_is_fourteen_utc_days_ending_today_with_zeros():
+async def test_turns_by_day_is_fourteen_utc_days_ending_today_with_zeros():
     today = datetime(2026, 11, 24, 15, tzinfo=timezone.utc)
     recorder = InMemoryUsageRecorder(clock=lambda: today)
-    recorder.record_turn("old", ok=True, duration_seconds=1, tools=[], at=today - timedelta(days=14))
-    recorder.record_turn("edge", ok=True, duration_seconds=1, tools=[], at=today - timedelta(days=13))
-    recorder.record_turn("mid", ok=True, duration_seconds=1, tools=[], at=datetime(2026, 11, 20, tzinfo=timezone.utc))
-    recorder.record_turn("now", ok=True, duration_seconds=1, tools=[], at=today)
-    recorder.record_turn("now", ok=False, duration_seconds=1, tools=[], at=today)
+    await recorder.record_turn("old", ok=True, duration_seconds=1, tools=[], at=today - timedelta(days=14))
+    await recorder.record_turn("edge", ok=True, duration_seconds=1, tools=[], at=today - timedelta(days=13))
+    await recorder.record_turn("mid", ok=True, duration_seconds=1, tools=[], at=datetime(2026, 11, 20, tzinfo=timezone.utc))
+    await recorder.record_turn("now", ok=True, duration_seconds=1, tools=[], at=today)
+    await recorder.record_turn("now", ok=False, duration_seconds=1, tools=[], at=today)
 
-    snap = recorder.snapshot("demo")
+    snap = (await recorder.snapshot("demo"))
     days = snap.turns_by_day
 
     assert snap.since == "2026-11-24T15:00:00+00:00"
@@ -240,10 +237,10 @@ def test_turns_by_day_is_fourteen_utc_days_ending_today_with_zeros():
     assert snap.estimated_cost_usd == 0.0
 
 
-def test_recorder_keeps_only_the_last_5000_turns():
+async def test_recorder_keeps_only_the_last_5000_turns():
     recorder = InMemoryUsageRecorder()
     for index in range(5001):
-        recorder.record_turn(
+        await recorder.record_turn(
             "dropped" if index == 0 else "kept",
             ok=True,
             duration_seconds=0,
@@ -251,7 +248,7 @@ def test_recorder_keeps_only_the_last_5000_turns():
             usage={"input_tokens": 1000 if index == 0 else 1},
         )
 
-    snap = recorder.snapshot("demo")
+    snap = (await recorder.snapshot("demo"))
     assert snap.turns == 5000
     assert snap.conversations == 1
     assert snap.usage.input_tokens == 5000
