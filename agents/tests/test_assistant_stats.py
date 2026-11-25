@@ -16,10 +16,7 @@ from agents.src.infrastructure.adapters.demo_personal_agent import DemoPersonalA
 from agents.src.infrastructure.adapters.in_memory_conversation_store import (
     InMemoryConversationStore,
 )
-from agents.src.infrastructure.adapters.in_memory_usage_recorder import (
-    InMemoryUsageRecorder,
-    get_usage_recorder,
-)
+from agents.src.infrastructure.adapters.in_memory_usage_recorder import InMemoryUsageRecorder
 from agents.tests.test_assistant_toolbox import FakeMemoryGateway
 
 
@@ -39,7 +36,7 @@ def client(monkeypatch):
     agents_main.app.dependency_overrides[agents_main.get_personal_agent] = (
         lambda: DemoPersonalAgent(AssistantToolbox(FakeMemoryGateway()), chunk_delay=0)
     )
-    agents_main.app.dependency_overrides[get_usage_recorder] = lambda: recorder
+    agents_main.app.dependency_overrides[agents_main.get_usage_recorder] = lambda: recorder
     yield TestClient(agents_main.app)
     agents_main.app.dependency_overrides.clear()
 

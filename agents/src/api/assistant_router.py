@@ -32,8 +32,7 @@ from agents.src.application.ports.personal_agent import (
     event_to_dict,
 )
 from agents.src.application.ports.usage_recorder import UsageRecorderPort
-from agents.src.infrastructure.adapters.in_memory_usage_recorder import get_usage_recorder
-from agents.src.main import get_conversation_store, get_personal_agent
+from agents.src.main import get_conversation_store, get_personal_agent, get_usage_recorder
 
 logger = get_logger("assistant_router")
 
