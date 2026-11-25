@@ -71,12 +71,13 @@ referencia). Tokens en `dashboard/src/app/globals.css`, piezas en `dashboard/src
 - [x] **F8-T7** Sección `/diagrams`: visor y catálogo de 78 diagramas en 8 familias: 64 generados, 11 existentes, 3 no aplican.
 - [x] **F8-T8** Vistas existentes y Asistente con el sistema visual nuevo; vista `/routines`.
 - [ ] **F8-T9** Conectores MCP externos (ver arriba). No iniciado.
-- [ ] **F8-T10** Verificación en vivo con `ANTHROPIC_API_KEY` (hereda F7-T7): investigación web y
-  rutinas solo se han probado con dobles de prueba.
+- [ ] **F8-T10** Verificación en vivo con `ANTHROPIC_API_KEY` (hereda F7-T7). Hecho: chat,
+  herramientas de memoria, investigación web y razonamiento contra la API real (ver `NOTAS.md`,
+  Fase 9). Falta: una rutina programada ejecutándose contra la API real.
 - [x] **F8-T11** Seguridad: solo una persona con sesión resuelve aprobaciones y activa rutinas
   (la API key de servicio recibe 403). Hallazgo del diagrama 7.7.
-- [ ] **F8-T12** Persistir en Postgres conversaciones, rutinas y estadísticas de uso (hoy viven en
-  la memoria del proceso de agents).
+- [x] **F8-T12** Persistir en Postgres conversaciones, rutinas y estadísticas de uso
+  (`AGENTS_STORE=postgres`; detalle en `NOTAS.md`, Fase 9).
 - [ ] **F8-T13** Contar en el costo los tokens de turnos fallidos y las ejecuciones de rutinas.
 - [ ] **F8-T14** Decidir qué hacer con los streams `mindos.comms.outbound` y `mindos.memory`, que
   se publican y nadie consume (hallazgo del diagrama 3.10).

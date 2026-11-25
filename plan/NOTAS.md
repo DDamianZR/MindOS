@@ -257,3 +257,42 @@ fusionadas, 5 carpetas vacías del checkout principal y `playground/`; `MINDOS_R
 `plan/diagnostico-inicial.md`. La rama remota `docs/c4-context` sigue en GitHub (no se tocó el
 remoto).
 
+## Fase 9 — Persistencia del agente en Postgres (F8-T12) — 2026-11-24
+
+Conversaciones, rutinas y estadísticas de uso del asistente dejan de vivir en la memoria del
+proceso. `AGENTS_STORE=postgres` (el valor de `docker-compose`) usa los stores de Postgres;
+`in_memory` (el valor por defecto fuera de Docker y en los tests) conserva el comportamiento
+anterior.
+
+- **Esquema propio con Alembic** (`agents/alembic`, tabla de versiones `alembic_version_agents`)
+  para no mezclar su cadena de migraciones con la de Memory sobre la misma base. El servicio
+  `migrate-agents` de `docker-compose` la aplica antes de arrancar agents.
+- **Historial del proveedor en JSONB** serializado con `to_dict(mode="json")`, el mismo formato
+  que envía el SDK. Así los bloques de razonamiento vuelven a la API intactos, con su firma.
+- **Una sola ejecución por rutina:** un índice único parcial sobre las ejecuciones `running`
+  hace que dos arranques simultáneos dejen exactamente una; el segundo recibe `None`.
+- **Estadísticas en SQL** (agregados, `generate_series` para la serie diaria) y con historia
+  completa entre reinicios.
+- **Zona horaria de las rutinas:** se guarda siempre un nombre IANA (`tzlocal` + `tzdata`). En
+  Windows antes se guardaba el nombre localizado del sistema, que no se podía volver a resolver.
+
+**Defectos encontrados en el camino:**
+- Los servicios no arrancaban si el `.env` compartido traía variables de otro servicio (los
+  `Settings` pasan a `extra = "ignore"`).
+- Con una `ANTHROPIC_API_KEY` real en el `.env`, la suite llamaba a la API de pago. El
+  `conftest.py` de la raíz vacía las credenciales antes de importar los servicios.
+
+**Verificado:**
+- Tests de contrato comunes a los stores en memoria y en Postgres (27 contra un Postgres 18 real).
+- Una prueba de reinicio de punta a punta: conversación, rutina y estadísticas sobreviven a un
+  reinicio del servicio.
+- `pytest -m "not integration"` completo y `ruff` limpios.
+- En vivo, con la API real y el stack local (Memory, Agents y Gateway sobre Postgres), una
+  conversación de tres turnos con dos reinicios de agents entre turnos:
+  - el historial se restauró desde Postgres y la caché de prompts lo reconoció (lecturas de
+    caché de 14-25 mil tokens);
+  - el segundo turno produjo bloques de razonamiento firmados, y el tercero, tras reiniciar, los
+    reenvió desde la base sin error;
+  - los 10 mensajes y los 3 turnos de uso quedaron en la base.
+
+**No verificado:** una rutina programada ejecutándose contra la API real (F8-T10).
